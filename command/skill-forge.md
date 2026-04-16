@@ -1,7 +1,7 @@
 ---
 allowed-tools: Skill, Read, Write, Edit, Bash, Glob, Grep, Agent, TaskCreate, TaskUpdate, TaskList, AskUserQuestion, WebFetch
-argument-hint: [project-path | --phase=<name> | --skip-research | --skip-audit]
-description: Disciplined 9-phase pipeline to audit, research, and improve a project's skill library (discover → audit → find candidates → first-pass → research → second-pass → structure → QA → memory)
+argument-hint: [project-path | --interactive | --phase=<name> | --skip-research | --skip-audit]
+description: Disciplined 9-phase pipeline to audit, research, and improve a project's skill library. Defaults to autopilot (one stop at the Phase 5 cost gate). Use --interactive for full per-phase checkpoints.
 ---
 
 # /skill-forge
@@ -35,30 +35,34 @@ Skill(skill="skill-forge")
 
 This loads the main `SKILL.md` with the phase table. Do NOT preload all phase reference files — the skill's operating protocol is to read them on demand, one per phase.
 
-## Step 3: Run the pipeline
+## Step 3: Run the pipeline (autopilot by default)
 
-Follow the 9 phases in the skill's table. For each phase:
+Default mode is **autopilot** — skill-forge gets on with it. The pipeline auto-advances through phases, printing concise per-phase summaries as text. **One mandatory `AskUserQuestion` checkpoint: Phase 4 → 5 (cost gate)** — research spawns paid agents, always consent-gate that. Terminal Phase 9 has the star-ask. Everything else auto-proceeds.
 
-1. Read the matching `references/phase-N-<name>.md` reference file via the Read tool
+For each phase:
+
+1. Read the matching `references/phase-N-<name>.md` reference file
 2. Execute the phase steps
-3. Print a concise phase summary as plain text (what was done, counts, notable findings)
-4. **Call the `AskUserQuestion` tool** — NOT a text prompt — to gate the next phase. Each phase reference file specifies the exact question, header, and options to pass. Text prompts like "Proceed? [yes/no]" get missed by users skimming output; `AskUserQuestion` presents a clickable multi-choice dialog that blocks until selection.
+3. Print a concise summary as plain text (what was done, counts, notable findings — 5-10 lines)
+4. **If autopilot (default):** auto-advance to the next phase. Only call `AskUserQuestion` at Phase 4→5 and Phase 9 terminal.
+5. **If `--interactive`:** call `AskUserQuestion` after every phase using the spec in that phase's reference file.
 
-Honor user flags:
-- `--phase=N` or `--phase=<name>` → run ONLY that phase; **no AskUserQuestion at the end** (the single-phase mode is explicit about its scope)
-- `--from-phase=N` → start at phase N, run through Phase 9 with full checkpoint gating between phases
-- `--skip-<name>` → execute everything but skip named phases (still present `AskUserQuestion` on Phase 5 if research isn't skipped)
+Flags:
+- `--interactive` → full per-phase checkpoints (the cautious mode)
+- `--phase=N` → run ONLY that phase; no end-of-phase AskUserQuestion
+- `--from-phase=N` → start at phase N, run through Phase 9 (autopilot unless also `--interactive`)
+- `--skip-<name>` → skip named phases; Phase 5 consent still required if research isn't skipped
 
 ## Step 4: Critical safety rules
 
 These are hard stops — do NOT violate:
 
-1. **Never install third-party skills** to `~/.claude/skills/` from Phase 3. Clone for review only. Gems are extracted manually in Phase 6.
-2. **Never spawn > 3 agents concurrently** in Phase 5. Batch them. The compliance hook flags at 5 concurrent Claude processes.
-3. **Never skip Phase 8 (QA)** even if the user passes `--skip-*` flags.
-4. **Never proceed from Phase 4 to Phase 5 without consent** — research costs real money.
-5. **Never commit on the user's behalf** — edits happen but git commits are the user's call.
-6. **Always create a backup tarball** in Phase 4 before making any edits to `~/.claude/skills/`.
+1. **Never spawn > 3 agents concurrently** in Phase 5. Batch them. The compliance hook flags at 5 concurrent Claude processes.
+2. **Never skip Phase 8 (QA)** even if the user passes `--skip-*` flags.
+3. **Never proceed from Phase 4 to Phase 5 without explicit consent** — research costs real money. `AskUserQuestion` cost gate is mandatory in both autopilot and interactive modes.
+4. **Never commit on the user's behalf** — edits happen but git commits are the user's call.
+5. **Always create a backup tarball** in Phase 4 before making any edits to `~/.claude/skills/`. The backup is what makes the other phases reversible and therefore skippable-from-consent in autopilot.
+6. **Phase 3 candidate dispositions:** the Phase 3 agent picks install-directly / extract-gems / skip per candidate based on the assessment table. In autopilot those picks are applied; in `--interactive` the user can override via `AskUserQuestion`. Installing directly (via `npx skills add`) is a legitimate disposition — not banned — provided the candidate passes all five assessment dimensions.
 
 ## Step 5: Progress tracking
 

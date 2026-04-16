@@ -32,7 +32,7 @@ Reject outright:
 
 ### 3.3 Clone top 3-5 for review
 
-**Never use `npx skills add` at this phase.** Clone the source repos directly to a review area:
+**At this stage, clone — don't install.** Decisions about whether to install directly, extract gems, or skip happen AFTER you've read the candidate's actual content (step 3.5). Clone to a review area first:
 
 ```bash
 mkdir -p <project>/skill-review
@@ -52,7 +52,7 @@ find <project>/skill-review/<owner>-<repo> -name "SKILL.md"
 
 Plugins may contain many skills — identify the one(s) matching the search.
 
-### 3.5 Review each candidate
+### 3.5 Review each candidate and pick a disposition
 
 For each candidate, read the full SKILL.md and assess:
 
@@ -62,7 +62,20 @@ For each candidate, read the full SKILL.md and assess:
 | **Overlap** | Does it duplicate a user skill? (From Phase 2 inventory) |
 | **Quality** | Are claims sourced? Are examples concrete? Is the prose AI-slop? |
 | **Freshness** | When was it last updated? Any stale-looking content? |
+| **Version fit** | Does its claimed framework version match the target project's stack? |
 | **Unique value** | What gems would we extract that aren't already in user's skills? |
+
+Based on the assessment, pick **one of three dispositions** per candidate:
+
+| Disposition | When it's the right call | Action |
+|---|---|---|
+| **Install directly** | Perfect-match stack + actively maintained + official/reputable owner + zero overlap with existing user skills + content is current | `npx skills add <owner>/<repo>@<skill> -g -y` in Phase 4 |
+| **Extract gems** | Partial fit — useful chunks exist but the whole skill doesn't fit, OR content needs project-specific tailoring, OR you want user-owned evolution | Extract cited rules into the user's existing skills (or a new project-specific skill) in Phase 6 |
+| **Skip** | Irrelevant, duplicate of user skill, low quality, stale, or wrong version | No action; log the reason |
+
+**The old rule was "never install directly, always extract".** That's been relaxed: if a candidate passes all five dimensions above AND the user wants upstream updates (via `npx skills update`), installing directly is the right call. The extract-gems path is for when you need *partial* content or *project-specific* tailoring.
+
+In **autopilot mode**, the Phase 3 agent's per-candidate disposition is applied without confirmation. In **interactive mode**, the user sees each recommendation and can override via `AskUserQuestion`.
 
 ### 3.6 Produce the candidate review
 
