@@ -1,0 +1,21 @@
+# skill-forge working artifacts (per target project, not this repo)
+.skill-forge/
+skill-review/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
