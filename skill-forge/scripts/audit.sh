@@ -152,7 +152,8 @@ EOF
         if [[ "$count" -gt 0 ]]; then
             first=$(echo "$all_unique_nums" | head -1)
             last=$(echo "$all_unique_nums" | tail -1)
-            inline_count=$(echo "$main_rules" | grep -c . 2>/dev/null || echo 0)
+            inline_count=$(printf '%s\n' "$main_rules" | grep -c . 2>/dev/null)
+            : "${inline_count:=0}"
             echo "  ${GREEN}✓${NC} $count unique rule numbers ($first-$last); $inline_count inlined in main"
         fi
     fi
@@ -182,7 +183,8 @@ EOF
         # Flag bad-split patterns (tight refs with only 1-2 rules = likely mis-clustered)
         for ref in "$skill/references"/*.md; do
             refname=$(basename "$ref")
-            ref_rule_count=$(grep -cE "^##+ Rule [0-9]+:" "$ref" 2>/dev/null || echo 0)
+            ref_rule_count=$(grep -cE "^##+ Rule [0-9]+:" "$ref" 2>/dev/null)
+            : "${ref_rule_count:=0}"
             # Only flag if the reference uses numbered rules at all (ref_rule_count > 0)
             # AND has fewer than 3. This catches under-clustered references without
             # spamming for non-rule-based reference files (templates, overviews).
