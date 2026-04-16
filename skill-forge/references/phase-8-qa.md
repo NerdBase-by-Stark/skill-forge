@@ -16,11 +16,17 @@ The script checks each skill for:
 2. **`name` matches directory name** — prevents accidental rename bugs
 3. **Description ≤ 300 chars** — Claude best practice
 4. **filePattern exists** and is a list (can be empty list `[]` for user-invocable-only skills)
-5. **Rule coverage** — if the skill uses numbered rules, no gaps and no duplicates across all markdown files (main + references)
+5. **Rule coverage** — no duplicates across reference files (progressive disclosure — rule in main + one reference — is allowed)
 6. **References exist** — every `references/X.md` mentioned in main SKILL.md is a real file
 7. **No orphan references** — every file in `references/` is mentioned at least once in main SKILL.md
 8. **Main SKILL.md size** — warn if > 2,500 tokens
 9. **Cross-skill filePattern overlap** — detect identical glob patterns in multiple skills (prints as matrix)
+10. **Split-quality warnings (catches bad refactors):**
+    - Reference with < 3 numbered rules → likely mis-clustered; consider merging with a related topic
+    - Main with < 5 inline rules *when references exist* → not enough anchors (progressive disclosure target is 5-8)
+    - Main with > 10 inline rules → didn't really refactor; move less-critical rules to references
+
+    These are warnings, not errors. But resolve them before shipping — they indicate a split that's either too fragmented or too under-committed.
 
 ## Manual checks (beyond the script)
 
