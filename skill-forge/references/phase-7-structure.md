@@ -45,7 +45,7 @@ The new main SKILL.md should have:
    | QSS stylesheets, "invisible text" | `references/qss.md` |
    | Threading / QObject lifecycle | `references/threading-and-cleanup.md` |
    ```
-4. **5-8 drop-everything critical rules inline** — the ones that prevent the most production bugs
+4. **5-8 drop-everything critical rules inline** (see selection criteria below)
 5. (Optional) A "Pairs with" section linking related user skills
 
 Target size: ~1,500-2,500 tokens.
@@ -55,6 +55,54 @@ Target size: ~1,500-2,500 tokens.
 # All rule numbers present exactly once (in either main or a reference)
 bash ~/.claude/skills/skill-forge/scripts/audit.sh ~/.claude/skills/<skill>
 ```
+
+## How to pick the inline rules (not just any 5-8)
+
+A rule belongs inline in the main SKILL.md if **all three** hold:
+
+1. **Violated often** — seen in production ≥3 times, or likely to be violated by anyone new to the domain
+2. **Silent violation** — no error thrown; it corrupts behaviour until a user-visible bug appears
+3. **1-2 line fix** once you know
+
+Rules that are severe-but-rare go in references (low inline leverage). Rules that are common-but-obviously-wrong (compiler/linter would catch) also go in references — they don't need the inline real estate.
+
+**Example from pyside6-desktop:** Rules 1, 9, 10, 16, 28, 39, 43 made it inline. Why each:
+- Rule 1 (QSS `color:` on every inline setStyleSheet): dozens of violations per project, silent (invisible text in dark mode), 1-line fix
+- Rule 9 (no signals from ThreadPoolExecutor): silent corruption under load, 3-line fix
+- Rule 16 (PySide6 has no ARM64 Linux wheel): wastes an hour if you don't know, trivial to sidestep once known
+
+Rule 34 (`--onefile` antivirus FPs) didn't make it inline despite being important — it's a *distribution* concern, not a *writing-code* concern, and the developer only hits it at ship time.
+
+## How to cluster reference files
+
+Good clusters are **question-shaped**: "If a developer asks X, they'd open file Y." Test each candidate cluster by rephrasing the name as a question:
+
+- ✅ `qss.md` → "help with Qt stylesheets"
+- ✅ `pyinstaller.md` → "how do I package this for Windows?"
+- ✅ `signing-and-av.md` → "what do I need to know about code signing?"
+- ❌ `misc.md` / `other.md` → "various things"… if you can't name the question, regroup
+- ❌ `rules-20-to-25.md` → never name by numeric range
+
+Aim for 4-8 clusters. Cluster sizes don't need to match — one file might have 13 rules (threading) and another 3 (widgets). Force-symmetrical clusters break Q&A-shape.
+
+## After refactor — sanity checks
+
+Before moving to Phase 8, answer these:
+
+1. **First-read test:** Could someone new to the skill navigate from the pointer table to the right reference in under 10 seconds?
+2. **Self-contained test:** Does each reference file make sense on its own, or does it assume you've just read another?
+3. **Deletion test:** If you had to delete one reference file, would the main break, or just lose depth on one topic? (It should be the latter.)
+4. **Inline triage test:** Could you delete any one of the inline rules and have the skill stop preventing a real production bug? (If yes, that rule shouldn't be inline.)
+
+If any answer is "no", regroup before continuing.
+
+## Bad-refactor anti-patterns
+
+- **Dump file** — `misc.md`, `other.md`, `everything-else.md`. Means clustering failed; redo.
+- **Micro-references** — 15 files each with 2-3 rules. Defeats the purpose; harder to navigate than a monolith. Merge related ones until each has ≥ 5 rules or a cohesive single-topic scope.
+- **Too-large main** — inlined 20+ rules "to be comprehensive". That's just the monolith you started with. Cut it down.
+- **Rule-range names** — `rules-1-to-8.md`. Topics, not numbers. If you can't describe the file by topic, the cluster is wrong.
+- **Renumbered rules** — breaks every cross-reference in the skill, in user project memory, in git history. Keep the numbers exactly as they were.
 
 ## filePattern / bashPattern tightening
 

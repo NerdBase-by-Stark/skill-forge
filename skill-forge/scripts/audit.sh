@@ -178,6 +178,32 @@ EOF
                 errors=$((errors+1))
             fi
         done
+
+        # Flag bad-split patterns (tight refs with only 1-2 rules = likely mis-clustered)
+        for ref in "$skill/references"/*.md; do
+            refname=$(basename "$ref")
+            ref_rule_count=$(grep -cE "^##+ Rule [0-9]+:" "$ref" 2>/dev/null || echo 0)
+            # Only flag if the reference uses numbered rules at all (ref_rule_count > 0)
+            # AND has fewer than 3. This catches under-clustered references without
+            # spamming for non-rule-based reference files (templates, overviews).
+            if [[ "$ref_rule_count" -gt 0 ]] && [[ "$ref_rule_count" -lt 3 ]]; then
+                echo "  ${YELLOW}⚠${NC}  references/$refname has only $ref_rule_count rules — likely mis-clustered or needs merging with a related topic"
+                warnings=$((warnings+1))
+            fi
+        done
+
+        # Sanity-check inline critical rule count in main (5-8 is the target band per phase-7)
+        # Skip this check for skills without numbered rules in main at all.
+        if [[ -n "$main_rules" ]]; then
+            main_rule_count=$(echo "$main_rules" | grep -c .)
+            if [[ "$main_rule_count" -lt 5 ]] && [[ "$ref_count" -gt 0 ]]; then
+                echo "  ${YELLOW}⚠${NC}  Only $main_rule_count rule(s) inline in main — progressive disclosure target is 5-8 critical rules"
+                warnings=$((warnings+1))
+            elif [[ "$main_rule_count" -gt 10 ]]; then
+                echo "  ${YELLOW}⚠${NC}  $main_rule_count rules inlined in main — progressive disclosure target is 5-8; consider moving less-critical ones to references"
+                warnings=$((warnings+1))
+            fi
+        fi
     fi
 
     echo
