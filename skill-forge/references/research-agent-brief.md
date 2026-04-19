@@ -14,7 +14,7 @@ Check available subagent types first — `search-specialist` is ideal but not un
 
 ### Permission-mode safety rail (CRITICAL)
 
-If the supervisor is running with `bypassPermissions`, `acceptEdits`, or `auto` permission mode, **sub-agents inherit that mode unconditionally and it cannot be overridden per sub-agent** (per Anthropic's official sub-agent docs, 2026). In those modes, a denylist in the brief is NOT sufficient — the sub-agent can auto-approve any tool that isn't explicitly forbidden.
+If the supervisor is running with `bypassPermissions`, `acceptEdits`, or `auto` permission mode, sub-agents inherit that mode and it is not per-sub-agent overridable in current Claude Code versions (verify against release notes if behaviour has changed). In those modes, a denylist in the brief is NOT sufficient — the sub-agent can auto-approve any tool that isn't explicitly forbidden.
 
 **Use a `tools:` allowlist** in every sub-agent spawn when any permissive parent mode might be active:
 
@@ -23,10 +23,6 @@ tools: Read, Grep, Glob, WebSearch, WebFetch, Firecrawl, Write
 ```
 
 This is enforced at the Claude Code layer (not just in the prompt), so a compromised or misled sub-agent cannot exceed the allowlist. Denylists (`disallowedTools:`) are insufficient under `bypassPermissions` — always prefer the allowlist when the parent is permissive.
-
-### Plugin-skill AskUserQuestion bug (note for users)
-
-A known bug (GitHub Issue #29547) causes `AskUserQuestion` to silently return empty answers when called from inside a Claude Code *plugin* skill — the permission evaluator bypasses the user-interaction check. **Users who install skill-forge as a plugin (not a regular user-space skill) may find consent gates silently return empty answers with Claude hallucinating selections.** Test consent gates outside plugin context before relying on them. As of 2026-04-19, user-space skills at `~/.claude/skills/<name>/` (the default install path) are not affected; only plugin-packaged skills trigger the bug.
 
 ## Prompt template (copy then fill)
 
@@ -148,3 +144,7 @@ Before spawning, verify:
 ## Example filled brief
 
 See the `example-research/` directory in the skill-forge repo (https://github.com/NerdBase-by-Stark/skill-forge/tree/main/example-research) for 7 concrete output examples produced from this template. Each is a complete, verified-source research doc covering a distinct domain — use them to calibrate what "good" Phase 5 output looks like.
+
+## Known issues
+
+**Plugin-install AskUserQuestion bug.** A Claude Code bug (GitHub Issue #29547) can cause `AskUserQuestion` to silently return empty answers when skill-forge is installed as a *plugin* rather than a regular user-space skill at `~/.claude/skills/<name>/` — the permission evaluator bypasses the user-interaction check and Claude hallucinates selections. If you're running skill-forge as a plugin, test consent gates before relying on them, or use the standard user-space install. Verify status against the upstream issue before assuming it still applies.

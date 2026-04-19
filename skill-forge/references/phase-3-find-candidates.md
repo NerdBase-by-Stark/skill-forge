@@ -144,35 +144,20 @@ Combine:
 
 **"✓ Fits — leave alone" skills are excluded from the change set** — they become zero entries in this gate. (They remain in scope for Phase 5 research; research findings go through the Phase 5→6 gate.)
 
-### Step B: Print the plain-English change blocks
+### Step B: Present each proposed change in plain English
 
-For each proposed change, print:
+For every change in the filtered set, show the user:
 
-```
-┌─ Change <N> of <TOTAL> ───────────────────────────────────────┐
-│ Skill:     <skill-name>
-│ Action:    <Edit description | Fix YAML | Narrow filePattern | Add cross-ref | Install from <owner/repo> | …>
-│
-│ What this changes:
-│   <1-3 bullets describing the concrete diff — before → after where useful>
-│
-│ What you gain:
-│   <concrete observable benefit — "skill will now actually load (YAML currently broken)"
-│    NOT "description will be shorter">
-│
-│ Risks:
-│   <honest downsides — "description wording is subjective", "install brings upstream
-│    updates outside your direct control", "new filePattern might miss edge-case files">
-│
-│ Source of this proposal:
-│   <Phase 2 audit ID, Phase 3 candidate review, project memory file, etc.>
-│
-│ Reversible:
-│   <yes via backup tarball / yes via git / no — destructive>
-└───────────────────────────────────────────────────────────────┘
-```
+- **Skill + action** — which skill, what's happening to it (edit, install, fix, narrow filePattern, etc.)
+- **What changes** — the concrete diff, before → after where useful
+- **What the user gains** — a named observable benefit, not "shorter description" or "cleaner formatting"
+- **Risks** — honest downsides (subjective wording, upstream-update coupling from installs, edge-case coverage loss)
+- **Source** — which Phase 2 audit finding / Phase 3 candidate / memory file proposed this
+- **Reversibility** — backup tarball, git, or destructive
 
-If there are zero changes after filtering, skip to Step D (healthy-library exit).
+Render however reads clearly in the user's terminal. One change per block, blocks numbered or clearly separated.
+
+If the filtered change set is empty, skip to Step D (healthy-library exit).
 
 ### Step C: Ask for approval via `AskUserQuestion`
 
