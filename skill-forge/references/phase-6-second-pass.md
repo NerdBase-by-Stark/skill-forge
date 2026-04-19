@@ -12,6 +12,39 @@
 
 ## Workflow
 
+### 5.5 Research-coverage matrix (before extraction, transparent gap surfacing)
+
+Before running §6.1 (reading research docs for extraction), build a **coverage matrix** that maps every stack component identified in Phase 1 against the research docs that cover it. This catches Phase 5 stream-planning gaps before they become Phase 6 extraction misses.
+
+```
+| Stack component (from Phase 1 profile) | Research coverage        | Notes               |
+|----------------------------------------|--------------------------|---------------------|
+| tailwind-v4 + vite                     | ✓ doc 01                 |                     |
+| capacitor-ios-mobile-web               | ✓ doc 02                 |                     |
+| ios-logs-xcode26                       | ✓ doc 03                 |                     |
+| playwright + vitest                    | ✓ doc 04                 |                     |
+| supabase-rls-ssr                       | ✓ doc 05                 |                     |
+| react19-vite7                          | ✓ doc 06                 |                     |
+| zustand                                | ✗ MISSING                | No stream assigned  |
+| cloudflare-pages                       | ✗ MISSING                | No stream assigned  |
+```
+
+If any component shows MISSING, **call `AskUserQuestion`** before proceeding to §6.0:
+
+```
+Question: "Research has gaps — spawn catch-up streams?"
+Header:   "Coverage gaps"
+Options:
+  - Label: `Spawn catch-up streams`
+    Description: Adds <N> research streams (~$<cost>) to cover missing components; extends Phase 5 before extraction
+  - Label: `Proceed without coverage`
+    Description: Extract from current research; skills won't cover missing components until next run
+  - Label: `Explain more`
+    Description: Show what each missing component would research
+```
+
+This is not Audit Army. It's a transparent free check (no agents spawned) that surfaces what Phase 5 planning may have missed, and lets the user decide whether to spend catch-up-stream cost or accept the gap. Most runs will have zero gaps; when gaps exist, the user makes an informed decision.
+
 ### 6.0 Phase 5 → 6 second-pass approval gate (MANDATORY in autopilot)
 
 This is the **second write-consent gate**. Runs BEFORE any edit to `~/.claude/skills/`. The user sees every proposed Phase 6 change in plain English and approves via `AskUserQuestion`.
@@ -120,6 +153,23 @@ Don't silently drop proposed rules. Log every rejection in `<project>/.skill-for
 ### 04-av-evasion.md "Rule: Rename python311.dll to avoid detection"
 - **Reason:** Folklore, debunked in same doc. Would actively harm the skill.
 ```
+
+### 6.6b Sonnet critique pass (automatic, cheap)
+
+After §6.1-§6.6 complete (primary extraction done, logged to `second-pass-changes.md`), but BEFORE §6.0 presents the approval gate, automatically spawn a single **Sonnet read-only critique sub-agent** to find extraction gaps.
+
+See `references/phase-6-critique.md` for the full brief template, output format, supervisor-handles-results protocol, and skip-flag behavior.
+
+Summary of flow:
+1. Supervisor (Opus or user's chosen model) finishes primary extraction
+2. Supervisor spawns one Sonnet sub-agent: `subagent_type: general-purpose, model: sonnet, run_in_background: true`
+3. Sub-agent reads Phase 5 research docs + extraction log, writes gap report to `.skill-forge/phase-6-critique.md`
+4. Supervisor reads the critique gap list, folds gaps into the approval gate's proposal list with `[Model-specific: Sonnet critique]` tags
+5. Gate presents the combined set; user approves per-change as usual
+
+Cost: ~$0.30-0.50 per run. Skipped automatically under `--budget=low` or explicitly via `--skip-critique`.
+
+Evidence base: caught Keyboard v8 event-rename extraction gap in biltong-buddy 2026-04-19 run.
 
 ### 6.7 Update related skills' cross-references
 

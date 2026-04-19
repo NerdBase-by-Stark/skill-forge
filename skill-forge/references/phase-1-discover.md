@@ -52,6 +52,38 @@ Look for memory files under `~/.claude/projects/<project-path-slug>/memory/`:
 - Read `MEMORY.md` to understand what's already known
 - Note any `feedback_*.md` files — user preferences that affect how this project is handled
 
+### 1.5 Profile-completeness grep (catch stack misses before Phase 5)
+
+A structured stack profile from reading `package.json` / `pyproject.toml` is not sufficient. Declared dependencies may be unused; actual imports may reveal stack components the profile missed. Before finalising the profile, run a **grep-based completeness check** — it's free, runs in ~30 seconds, and catches misses that would otherwise cascade into Phase 5 as uncovered research topics.
+
+For JS/TS projects:
+
+```bash
+cd <project>
+jq -r '.dependencies // {} | keys[]' package.json | while read pkg; do
+  count=$(grep -rEc "from [\"']$pkg" src/ 2>/dev/null | awk -F: '{s+=$2} END {print s}')
+  echo "$count $pkg"
+done | sort -rn | awk '$1 > 10 {print}'
+```
+
+For Python projects: equivalent with `pip list` + `grep -rEc "^import $pkg|^from $pkg" src/`.
+
+**Cross-reference against the profile's `tech_stack_tags`.** Any package with >10 import sites that isn't represented in the profile's stack is a **flag** — add it to the profile and to Phase 5 stream planning.
+
+Real example (2026-04-19 biltong-buddy run): a package.json-derived profile missed `zustand` entirely because the tag list was based on framework detection. Grep showed 40+ imports across `ProtectedRoute.tsx`, `OnboardingChecklist.tsx`, several pages. Major stack component missed. Adding it to the profile prevented a downstream Phase 5 coverage gap.
+
+**Output:** append to `profile.json` a `profile_completeness` block:
+
+```json
+"profile_completeness": {
+  "grep_verified": true,
+  "heavy_imports_not_in_stack_tags": [],
+  "new_tags_added_from_grep": ["zustand", "dexie"]
+}
+```
+
+If `heavy_imports_not_in_stack_tags` is non-empty after reconciliation, the profile is lying to downstream phases — resolve before proceeding.
+
 ### 1.6 Produce the profile
 
 Write to `<project>/.skill-forge/profile.json`:

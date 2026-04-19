@@ -38,20 +38,23 @@ End-to-end workflow for improving a project's skill library. Entry point is the 
    If second-run audit finds no defects AND no Phase 5 research is requested (or none proposed gems that pass the justification bar), report "library is healthy" and exit — produce no changes.
 9. **Every proposed change carries a justification in plain English.** Before any write to `~/.claude/skills/`, the user sees a block per skill: *what changes / what you gain / what the risks are / where the evidence came from / how to revert*. The user approves via `AskUserQuestion` before any edit lands. Post-hoc summaries are not consent.
 10. **Sub-agents are output-only.** Research agents write files, nothing else. No `git`, no `gh`, no branches, no commits, no PRs. See `references/research-agent-brief.md` for the mandatory scope clause.
+11. **Single-model by default; dual-model only where evidence justifies.** Running two models on the same work (Phases 1-4, 7-9) is wasteful — models converge >95% of the time on those phases, and divergence is usually a process issue (scope, rubric, coverage) that's better fixed by a process change than by throwing a second model at it. Dual-model adds real value in **exactly two places**: (a) opt-in `--dual-research` Phase 5 with topic-partitioned streams (Opus = framework/security, Sonnet = deployment/platform), and (b) an automatic cheap Sonnet read-only **critique pass** after Phase 6 primary extraction to catch gaps like a missed gem in an otherwise-extracted research doc. Everything else is single-model. See `references/phase-5-research.md` and `references/phase-6-critique.md`.
+12. **Mandatory security stream for authenticated backends.** If Phase 1 profile contains `supabase` / `firebase` / `auth0` / `jwt` / `express-session` / `passport` / similar auth triggers, Phase 5 automatically adds a non-optional security-audit research stream (Opus model). This is not a model-choice preference — security findings are high-enough stakes that "no stream covered this" is a production risk worth a mandatory stream inclusion. Override via `--skip-security-stream` (warns loudly).
 
 ## The 9 phases
 
 | # | Phase | Output | Reference |
 |---|---|---|---|
-| 1 | **Discover** | Project profile: tech stack, existing skills, CLAUDE.md rules | `references/phase-1-discover.md` |
-| 2 | **Audit** | Size / trigger / overlap report on existing project-relevant skills | `references/phase-2-audit.md` |
+| 1 | **Discover** | Project profile; §1.5 grep-verified completeness check catches stack misses before Phase 5 | `references/phase-1-discover.md` |
+| 2 | **Audit** | Deterministic-scope audit of all in-scope skills (no hand-picked subset) | `references/phase-2-audit.md` |
 | 3 | **Find Candidates** | 3-5 external skills cloned to `skill-review/`, reviewed, gap analysis | `references/phase-3-find-candidates.md` |
 | 4 | **First-Pass Edits** | Clear wins applied (cross-refs, scope clarifications, known corrections) | `references/phase-4-first-pass.md` |
-| 5 | **Deep Research** | 5-8 search-specialist agents write verified-source docs to `docs/skill-research/` | `references/phase-5-research.md` (uses `references/research-agent-brief.md` template) |
-| 6 | **Second-Pass Edits** | Verified gems extracted into skills; new skills created if warranted | `references/phase-6-second-pass.md` |
-| 7 | **Structure** | Progressive disclosure refactor for oversized skills; filePattern tightening | `references/phase-7-structure.md` |
-| 8 | **QA** | Automated audit: YAML, rule coverage, descriptions, filePattern overlap, reference existence | `references/phase-8-qa.md` + `scripts/audit.sh` |
-| 9 | **Memory** | Persist architectural decisions, preferences, skill inventory to project memory | `references/phase-9-memory.md` |
+| 5 | **Deep Research** | Mandatory security stream (if auth stack) + opt-in `--dual-research` topic-partitioned Opus+Sonnet streams | `references/phase-5-research.md` (uses `references/research-agent-brief.md`) |
+| — | 5.5 Coverage matrix | Free check: stack components × research coverage; offers catch-up streams if gaps | `references/phase-6-second-pass.md §5.5` |
+| 6 | **Second-Pass Edits** | Primary extraction + automatic Sonnet read-only critique pass (~$0.30-0.50, catches extraction gaps) | `references/phase-6-second-pass.md` + `references/phase-6-critique.md` |
+| 7 | **Structure** | Progressive disclosure refactor for oversized skills (>500 lines); filePattern tightening | `references/phase-7-structure.md` |
+| 8 | **QA** | Automated audit: rule IDs (FM/SS/TR/RI/SC), severity levels, security category on bundled scripts | `references/phase-8-qa.md` + `scripts/audit.sh` |
+| 9 | **Memory** | Skill inventory + gotcha rubric (memory entries for every API behavioral change surfaced in research) | `references/phase-9-memory.md` |
 
 ## On invocation — confirm intent first
 

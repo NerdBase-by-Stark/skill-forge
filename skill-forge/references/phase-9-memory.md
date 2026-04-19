@@ -41,6 +41,24 @@ Each should become one `project_*.md` memory entry with rule + Why: + How to app
 - `docs/skill-research/` contents → one `reference_*.md` memory entry linking it
 - External URLs that were load-bearing in the research (e.g., the authoritative spec page for a protocol)
 
+### Gotcha rubric (explicit, to counter memory-completeness drift)
+
+Write a `gotcha_*.md` memory entry for **every specific API behavioral change** surfaced in Phase 5 research, even if the change is covered in a skill reference file. The gotcha entry is redundant with the skill reference but intentional — a future session working on the affected code may not load that skill's references, and the memory entry provides a safety net.
+
+Qualifying changes (always write a gotcha):
+- **API rename** or event-name change between library versions (e.g., Capacitor 8 `keyboardWillShow` rename)
+- **Behavior reversal** between versions (e.g., `getSession()` semantics change under @supabase/ssr 0.10+)
+- **Silent-default change** — a default value / fallback behavior that shifted version-to-version without a breaking change warning
+- **Deprecation with compat shim removed** in the current stable
+- **Platform / vendor deadline** with a dependency chain (e.g., Apple Xcode 26 April 28 deadline requires macOS Sequoia upgrade first)
+
+Non-qualifying (skill reference is sufficient, don't write a gotcha):
+- General best-practice advice ("prefer X over Y for performance")
+- Style/convention rules
+- New features that don't replace old behavior
+
+A 2026-04-19 cross-model critique demonstrated this rubric closes a Phase 9 completeness gap without needing a second model: the primary (Opus) memory pass wrote inventory + research-doc references but missed two API-behavioral-change gotchas that were genuinely durable. Explicit rubric fixes the omission.
+
 ## Memory file naming
 
 `<type>_<short_slug>.md` — where type is `feedback`, `project`, `reference`, or `gotcha`.

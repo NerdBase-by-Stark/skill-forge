@@ -6,10 +6,20 @@
 
 ## Steps
 
+### 2.0 Determine audit scope (deterministic, not hand-picked)
+
+The audit scope must be **deterministic** — not a human-curated subset of "skills I think are relevant." Curation misses things. A 2026-04-19 cross-model run demonstrated this: curating 17 skills missed a real defect (`gh-cli` description 4 chars over budget) that a 20-skill scope caught. The fix is process, not model-count.
+
+**Deterministic scope rule:** audit every user-owned skill in `~/.claude/skills/` whose filePattern matches at least one file in the target project, OR whose bashPattern appears in project scripts, OR that is explicitly listed in `profile.json` under `relevant_skills`. No manual "this probably isn't relevant, skip it." If in doubt, include.
+
+**Exclude only** upstream skills the user cannot edit (per `ownership split` — writing-skills, skill-creator, plugin-dev:*, etc.). These appear in FYI-only reports and never in edit proposals, but audits of them are informational.
+
+Produce the scope list to `.skill-forge/audit-scope.txt` before invoking audit.sh so subsequent runs can diff scope changes.
+
 ### 2.1 Run the audit script
 
 ```bash
-bash ~/.claude/skills/skill-forge/scripts/audit.sh ~/.claude/skills/<skill1> ~/.claude/skills/<skill2> ...
+bash ~/.claude/skills/skill-forge/scripts/audit.sh $(cat .skill-forge/audit-scope.txt | tr '\n' ' ')
 ```
 
 The script emits a structured report covering:

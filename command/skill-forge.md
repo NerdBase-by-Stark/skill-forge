@@ -1,7 +1,7 @@
 ---
 allowed-tools: Skill, Read, Write, Edit, Bash, Glob, Grep, Agent, TaskCreate, TaskUpdate, TaskList, AskUserQuestion, WebFetch
-argument-hint: [project-path | --interactive | --phase=<name> | --skip-research | --skip-audit]
-description: Disciplined 9-phase pipeline to audit, research, and improve a project's skill library. Defaults to autopilot (one stop at the Phase 5 cost gate). Use --interactive for full per-phase checkpoints.
+argument-hint: [project-path | --interactive | --phase=<name> | --skip-research | --skip-audit | --dual-research | --budget=low | --skip-critique | --skip-security-stream]
+description: Disciplined 9-phase pipeline to audit, research, and improve a project's skill library. Single-model by default; --dual-research opts into topic-partitioned Opus+Sonnet streams. Automatic cheap Sonnet critique pass after extraction.
 ---
 
 # /skill-forge
@@ -17,11 +17,15 @@ Parse `$ARGUMENTS` into:
 - Flags — `--phase=<1-9 or name>`, `--skip-research`, `--skip-audit`, `--skip-structure`, `--from-phase=<N>`, `--profile=<path>`
 
 Examples:
-- `/skill-forge` → full pipeline on cwd
+- `/skill-forge` → full pipeline on cwd (single-model, auto-critique on, auto-security-stream if triggered)
 - `/skill-forge ~/code/my-other-project` → full pipeline on a specific project path
 - `/skill-forge --phase=audit` → just Phase 2 (audit)
 - `/skill-forge --from-phase=6` → resume from Phase 6 (requires existing research docs)
 - `/skill-forge --skip-research` → full pipeline minus Phase 5 (reuses existing research if present)
+- `/skill-forge --dual-research` → Phase 5 uses topic-partitioned Opus + Sonnet streams (+$1.50-2.50); see `phase-5-research.md`
+- `/skill-forge --budget=low` → skip Phase 6 critique pass + skip mandatory security stream (warns at gate); minimal-cost run
+- `/skill-forge --skip-critique` → skip Sonnet read-only critique pass after Phase 6 primary extraction
+- `/skill-forge --skip-security-stream` → skip the mandatory security stream even if profile triggers it (warns loudly)
 
 If the argument is empty, confirm the target: `Run skill-forge against $(pwd)?` — don't assume.
 

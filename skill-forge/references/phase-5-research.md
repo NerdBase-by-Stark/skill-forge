@@ -27,6 +27,56 @@ Proceed? [yes / fewer streams / custom streams / stop]
 
 Never proceed without consent.
 
+## Mandatory security stream (auto-added for authenticated backends)
+
+Before freeform stream planning, check Phase 1 profile for authenticated-backend triggers:
+
+```
+Triggers → always add a security-audit stream:
+  supabase, firebase, auth0, jwt, express-session, passport, clerk,
+  lucia, next-auth, nextauth, iron-session, cookie-session
+```
+
+If any trigger is present, inject a non-optional security stream:
+
+- **Topic:** Authentication + session-token handling + RLS / authorization policies specific to the detected backend
+- **Model:** Opus (higher verification rate on security-critical claims per 2026-04-19 cross-model evidence)
+- **Priority:** Stream #1 in the plan — never deferred, never skipped
+
+Rationale: The `getSession()` trust bug and RLS indexing requirement (biltong-buddy run) are security findings that compromise production if missed. Model choice is secondary to stream inclusion — the failure mode is "no stream covered this," not "the wrong model ran this stream."
+
+Users can override via `--skip-security-stream` but the CLI warns loudly. This is an epistemic safety rail, not a cost preference.
+
+## Dual-research opt-in (--dual-research)
+
+By default, Phase 5 runs single-model research (supervisor's model, typically Opus). The `--dual-research` flag enables topic-partitioned dual-model research:
+
+**How the split works:**
+
+| Stream type | Default model | Rationale |
+|---|---|---|
+| Core framework/library rules (React, Vite, Tailwind, Capacitor, Supabase) | Opus | Verification-critical; 100% source-verification rate matters |
+| Security / auth / session handling | Opus | High-stakes, documentation precision required |
+| Deployment / CDN / build config (Cloudflare, Vercel, Railway, CI/CD) | Sonnet | Breadth sweep; target-codebase examination strength |
+| Platform / App Store / vendor deadlines | Sonnet | Fresh-docs discovery strength |
+| State management / component-level regressions | Sonnet | Codebase-grep strength on actual usage patterns |
+| Testing frameworks | Either (supervisor picks) | Both work well |
+
+**Hard rule:** topic partition must be complete before any brief is written. No overlap between Opus and Sonnet streams. The same topic must never be assigned to both models — that's wasted tokens for no new coverage.
+
+**Cost expectation:** +$1.50-2.50 over single-model research, depending on stream counts.
+
+**Evidence base:** 2026-04-19 biltong-buddy cross-model comparison showed zero topic overlap between model-assigned streams produced complementary findings (Sonnet surfaced 7 project-specific bugs Opus missed; Opus surfaced 4 security/framework bugs Sonnet missed). The complementarity comes from topic assignment, not parallel-same-stream runs — which the justification bar would reject as redundant.
+
+Present the split at the Phase 4→5 cost gate as part of the cost breakdown:
+
+```
+Phase 5 research plan (--dual-research enabled):
+  Opus streams (4): Supabase auth+RLS (mandatory-security), React19 rules, Playwright, Vitest
+  Sonnet streams (3): Cloudflare Pages CSP, Zustand v5 patterns, App Store preflight
+  Estimated cost: ~$5-7 ( ~$3-4 Opus + ~$2-3 Sonnet )
+```
+
 ## Stream design principles
 
 Each stream should be:
