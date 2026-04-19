@@ -14,6 +14,10 @@
 #   FM001-FM099  Frontmatter
 #   SS001-SS099  Structure / Size
 #   TR001-TR099  Triggers (filePattern / bashPattern)
+#                  TR001: filePattern recursive-wildcard overreach
+#                  TR002: bashPattern too common
+#                  TR003: cross-skill filePattern overlap
+#                  TR004: no triggers declared (description-only discovery)
 #   RI001-RI099  References integrity
 #   SC001-SC099  Security (bundled scripts)
 #
@@ -174,6 +178,17 @@ EOF
         emit "FM003" "WARNING" "Description is $desc_len chars (target ≤ 300)"
     else
         emit_ok "FM003 Description $desc_len chars"
+    fi
+
+    # TR004: Skill has no declared triggers (description-only discovery)
+    # Skills without filePattern AND without bashPattern can only be discovered
+    # via description lexical matching or explicit /skill-name invocation.
+    # That's valid for reference-style skills, but must be intentional — flag
+    # so the author confirms the choice rather than defaults to it by accident.
+    if [[ "$fp_count" -eq 0 ]] && [[ "$bp_count" -eq 0 ]]; then
+        emit "TR004" "WARNING" "No filePattern or bashPattern declared — discoverable via description matching only; add triggers or document intent in main SKILL.md"
+    else
+        emit_ok "TR004 Triggers declared ($fp_count filePattern, $bp_count bashPattern)"
     fi
 
     # SS001: Main line count (2026 Anthropic guidance: ≤ 500 lines)

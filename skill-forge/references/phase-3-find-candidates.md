@@ -111,6 +111,26 @@ Also document **what's missing** — things the project needs that neither user'
 2. **Driver signing workflows** — not needed now; flag for future
 ```
 
+## When no candidates are install-worthy (niche stacks)
+
+For niche or commercial-AV / vendor-specific stacks (Q-SYS, Crestron, Extron, BSS, Dante-specific DSP, broadcast automation, proprietary audio platforms), the skills registry typically returns **zero legitimate candidates**. Top hits are almost always lexical collisions:
+
+- `"qsys lua plugin"` → neovim (Lua runtime), OBS-Qt (unrelated Qt), FiveM QBox (GTA5 mod), Hammerspoon (macOS automation)
+- `"lua static analysis"` → Roblox Luau tooling (different language), FiveM lua linters
+- `"audio dsp matrix mixer"` → Godot audio, Unreal MetaSound, general mixing patterns
+
+**In these cases, reputation-by-install-count inverts.** The expert-authored skill is often the low-install one written by a single domain specialist; high-install hits are general-purpose tutorials harvested by broad tagging. Do not apply the standard "popular = signal" heuristic.
+
+**Short-circuit rule:** if after step 3.1 all top-5 candidates across queries have *both* zero owner-reputation signal (no recognised org/brand) *and* no description overlap with `profile.tech_stack_tags` or `profile.profile_completeness.heavy_api_surface`, stop Phase 3 early and emit:
+
+> **No install-worthy candidates — niche stack.** The skills registry does not contain experts in this domain. Two alternatives Phase 3 does not cover, but worth considering outside skill-forge:
+> - **Author a hook** — for deterministic enforcement of a file-type rule (see `~/.claude/hooks/qplug-validate.sh` as a pattern: PostToolUse on `*.qplug` runs `qpdk validate`)
+> - **Author an MCP wrapper** — if you have a local knowledge base (Neo4j/Qdrant/plain docs), a small MCP server makes it addressable by every agent instead of just keyword-triggered context injection
+>
+> Neither is in skill-forge's scope. Noted so you can decide.
+
+Log the short-circuit in `audit-report.md` under `### Phase 3 — short-circuit` so the reason is preserved across runs.
+
 ## Checkpoint — Phase 3 → 4 first-pass approval gate (MANDATORY in autopilot)
 
 This is the **first write-consent gate**. Before any edit lands in `~/.claude/skills/`, the user sees every proposed Phase 4 change in plain English and approves via `AskUserQuestion`.
