@@ -6,14 +6,22 @@
 
 ## When to refactor a skill
 
-A skill is a refactor candidate if ANY of these hold:
+**Default = no refactor.** Structural changes are invasive and the "bias toward no-change" principle from `SKILL.md §8` applies here too. Only refactor if **BOTH (a) AND (b) hold:**
+
+- **(a) A hard threshold is breached:** main SKILL.md > **500 lines** (the 2026 Anthropic official metric; replaces the older ~2,000-token folklore), or > 30 numbered rules, or unintentional filePattern overlap with another skill.
+- **(b) The content has clean topic boundaries** — rules cluster naturally into 4-8 question-shaped groups (see "How to cluster reference files" below). If the rules don't separate cleanly, the skill is dense-by-necessity; leave it alone and accept the overage as a warning in Phase 8.
+
+A skill being "a bit over the 500-line line" with no clean cluster boundaries is **not** a refactor target. Record it as an accepted Phase 8 warning and move on. Forcing a refactor on ambiguous content produces worse skills than leaving them dense.
+
+> **Source:** Anthropic's 2026 skill authoring best-practices doc at platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices specifies a 500-line structural cap on SKILL.md body. The older "2,500 tokens" rule is now folklore — line count is a more stable metric because token density varies by content type (code is dense, prose is sparse).
 
 | Trigger | Action |
 |---|---|
-| Main SKILL.md > 2,000 tokens | Split into main + `references/*.md` |
-| Main SKILL.md has > 30 numbered rules | Split by topic |
-| Rules span > 4 distinct topics | Split by topic even if under size threshold |
-| Multiple skills match the same files (intentional or not) | Consolidate or tighten patterns |
+| Main SKILL.md > 500 lines **AND content clusters cleanly** | Split into main + `references/*.md` |
+| Main SKILL.md has > 30 numbered rules **AND rules group by topic** | Split by topic |
+| Multiple skills match the same files (unintentional) | Consolidate or tighten patterns |
+| Main SKILL.md > 500 lines, no clean clusters | **Leave alone.** Accept as Phase 8 warning. |
+| filePattern overlap is intentional + has cross-ref | **Leave alone.** Not a defect. |
 
 ## Progressive disclosure refactor — the pattern
 
@@ -108,11 +116,29 @@ If any answer is "no", regroup before continuing.
 
 After Phase 6 may have added cross-project scope hints, re-verify patterns:
 
+### filePattern uses gitignore semantics, not shell glob
+
+**Important 2026 verification:** filePattern matching follows **gitignore** syntax, not typical bash glob:
+
+- `*.py` — matches Python files at the **top level only** (not recursive). Per gitignore rules, a pattern without `/` matches only the current directory. *Not* the same as shell `**/*.py`.
+- `**/*.py` — matches Python files **anywhere in the tree** (including nested subdirs).
+- Patterns without `/` match any depth; patterns with `/` anchor to specific paths.
+
+Document this in any skill that mentions filePattern so users don't assume bash-glob semantics.
+
+**Source:** Anthropic docs + GitHub Issue #26338 (gitignore-style matching confirmed for 2026).
+
 ### Too-broad filePatterns to avoid
-- `**/*.py` — matches every Python file anywhere
+
+The **truly** too-broad patterns (will trigger on every file of that type project-wide):
+- `**/*.py` — every Python file anywhere
 - `**/*.js` — every JavaScript file
 - `**/*.ts` — every TypeScript file
 - `**/*.md` — every markdown file
+- `*.py` WITHOUT a project-specific top-level convention (still broad if the project has many `.py` at root)
+
+**NOT necessarily too broad** (don't flag these as defects without evidence):
+- `*.py` in a project with a specific top-level Python script convention — it's scoped to top-level.
 
 ### Good filePatterns
 - File extensions unique to a domain: `*.qss`, `*.spec`, `*.qplug`

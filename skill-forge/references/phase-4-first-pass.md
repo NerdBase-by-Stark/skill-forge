@@ -1,23 +1,29 @@
 # Phase 4 — First-Pass Edits
 
-**Goal:** Apply **high-confidence clear wins** before spending money on research. Typos, broken cross-references, scope clarifications, overdue corrections.
+**Goal:** Apply the **high-confidence clear wins that the user approved** at the Phase 3→4 gate. Typos, broken cross-references, scope clarifications, overdue corrections, candidate installs.
 
-**Depends on:** Phase 2 audit + Phase 3 candidate review.
+**Depends on:** Phase 2 audit + Phase 3 candidate review + **user approval via `AskUserQuestion` at the Phase 3→4 gate** (see `references/phase-3-find-candidates.md §Checkpoint`).
+
+## Scope
+
+This phase only executes changes the user already approved. The plain-English change blocks, justification bar, and approval dialog all happen at the end of Phase 3 — not here. By the time Phase 4 starts, the edit set is frozen.
+
+If the user chose **Cancel** at the gate, Phase 4 is a no-op: skip straight to the Phase 4→5 cost gate. The backup tarball is still NOT created (nothing to back up).
 
 ## Rule of thumb for this phase
 
-If a change would require web research to justify, defer it to Phase 6. If you can verify the change with existing project files, project memory, or a single docs URL you already know is authoritative, do it here.
+If a change would require web research to justify, defer it to Phase 6. If you can verify the change with existing project files, project memory, or a single docs URL you already know is authoritative, it belonged in the Phase 3→4 gate. No new changes get invented in this phase — only approved ones execute.
 
-## Before making ANY edits
+## Before executing approved edits
 
-Snapshot the user's skills directory:
+Snapshot the user's skills directory (only if the approved set is non-empty):
 
 ```bash
 cd ~/.claude/skills
 tar czf <target-project>/.skill-forge/backup-$(date +%Y%m%d-%H%M%S).tar.gz .
 ```
 
-The backup gives you a rollback point if Phase 5-7 edits go wrong.
+The backup is defence-in-depth. The primary safety rail is that the user already saw and approved every change.
 
 ## Typical first-pass edits
 

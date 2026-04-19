@@ -111,33 +111,95 @@ Also document **what's missing** — things the project needs that neither user'
 2. **Driver signing workflows** — not needed now; flag for future
 ```
 
-## Checkpoint — call `AskUserQuestion`
+## Checkpoint — Phase 3 → 4 first-pass approval gate (MANDATORY in autopilot)
 
-Print the phase summary as text (5-10 lines — what was done, counts, notable findings). Keep it short. Then **call `AskUserQuestion`** (never a text prompt — users skim and miss them):
+This is the **first write-consent gate**. Before any edit lands in `~/.claude/skills/`, the user sees every proposed Phase 4 change in plain English and approves via `AskUserQuestion`.
+
+### Step A: Build the proposed change set
+
+Combine:
+- Every Phase 2 skill with a **Defect:** verdict → edit proposal
+- Every Phase 3 candidate with disposition **install directly** → install proposal
+- Every Phase 3 candidate with disposition **extract gems** → deferred to Phase 6 (NOT in this gate)
+
+**"✓ Fits — leave alone" skills are excluded from the change set** — they become zero entries in this gate. (They remain in scope for Phase 5 research; research findings go through the Phase 5→6 gate.)
+
+### Step B: Print the plain-English change blocks
+
+For each proposed change, print:
 
 ```
-Question: "Candidates reviewed — next step?"
-Header:   "Phase 3 → 4"
+┌─ Change <N> of <TOTAL> ───────────────────────────────────────┐
+│ Skill:     <skill-name>
+│ Action:    <Edit description | Fix YAML | Narrow filePattern | Add cross-ref | Install from <owner/repo> | …>
+│
+│ What this changes:
+│   <1-3 bullets describing the concrete diff — before → after where useful>
+│
+│ What you gain:
+│   <concrete observable benefit — "skill will now actually load (YAML currently broken)"
+│    NOT "description will be shorter">
+│
+│ Risks:
+│   <honest downsides — "description wording is subjective", "install brings upstream
+│    updates outside your direct control", "new filePattern might miss edge-case files">
+│
+│ Source of this proposal:
+│   <Phase 2 audit ID, Phase 3 candidate review, project memory file, etc.>
+│
+│ Reversible:
+│   <yes via backup tarball / yes via git / no — destructive>
+└───────────────────────────────────────────────────────────────┘
+```
+
+If there are zero changes after filtering, skip to Step D (healthy-library exit).
+
+### Step C: Ask for approval via `AskUserQuestion`
+
+```
+Question: "<N> changes proposed — approve?"
+Header:   "Phase 3 → 4 approval"
 Options:
-  - Label: `Apply clear wins`
-    Description: Phase 4: description tightening, filePattern narrowing, cross-refs
-  - Label: `Show candidate details`
-    Description: Print the full candidate analysis before advancing
-  - Label: `Explain more`
-    Description: Describe what Phase 4 does in detail, then re-ask
-  - Label: `Stop`
-    Description: Exit; candidate review preserved
+  - Label: `Approve all`
+    Description: Apply all <N> changes; creates backup tarball first
+  - Label: `Review each`
+    Description: Walk change-by-change with approve/skip
+  - Label: `Skip installs only`
+    Description: Apply edits to existing skills; skip the <K> new installs
+  - Label: `Cancel`
+    Description: Make no changes; advance to Phase 5 decision
 ```
 
-Option labels are short on purpose — users shouldn't have to read a paragraph to pick. Descriptions show below each label in the dialog.
+If **Review each**, loop one `AskUserQuestion` per change with options `[Approve / Skip / Show more / Cancel review]`. "Show more" prints the full diff for that skill then re-asks.
 
-### If user picks "Explain more"
+### Step D: Healthy-library early exit
 
-Print this detailed explanation to the user, then **re-call `AskUserQuestion` with the same options** (the user will pick one of the non-Explain-more options the second time):
+If the change set is empty (all skills "Fits — leave alone" AND no install-worthy candidates):
 
-> Phase 4 creates a backup tarball of ~/.claude/skills/ first, then applies high-confidence edits: shorten overlong descriptions, narrow overly-broad filePatterns, add cross-references between related skills, fix broken links. No new rules added (that's Phase 6 after research). Produces first-pass-changes.md. Takes ~1 minute.
+```
+Question: "Library is healthy — no edits proposed. Next?"
+Header:   "Phase 3 → 4 (healthy)"
+Options:
+  - Label: `Run Phase 5 research anyway`
+    Description: Research may surface new verified rules to add to existing skills
+  - Label: `Exit to summary`
+    Description: Skip to Phase 9; no changes, no tarball
+  - Label: `Explain more`
+    Description: What Phase 5 research looks like when nothing needs fixing
+```
 
-Never loop more than twice — if they pick "Explain more" again, default to "Stop" and ask them what they'd actually like to do.
+### Justification bar — reject weak gains BEFORE presenting
+
+Before Step B, filter the proposed change set. A change must state a **named, observable gain**. Reject (and drop silently — don't burden the user with choices that shouldn't exist):
+
+| Weak justification | What to do |
+|---|---|
+| "Shorter description" | Drop unless current description is >300 chars or triggers false-positives |
+| "Clearer formatting" | Drop unless current format breaks loader or produces a parse error |
+| "More consistent with other skills" | Drop unless inconsistency caused a real confusion reported in memory |
+| "Could be more specific" | Drop unless current is vague enough to false-trigger |
+
+If you can't fill the `What you gain` line with a concrete observable benefit, the change doesn't belong in the gate. Don't pad the list.
 
 
 ## Skipping this phase

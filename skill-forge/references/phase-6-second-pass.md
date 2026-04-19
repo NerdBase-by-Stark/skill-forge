@@ -2,7 +2,7 @@
 
 **Goal:** Convert verified research findings into concrete skill updates. This is where the library actually improves.
 
-**Depends on:** Phase 5 research docs + Phase 3 candidate review.
+**Depends on:** Phase 5 research docs + Phase 3 candidate review + **user approval via `AskUserQuestion` at the §6.0 gate below**.
 
 ## Inputs you're working from
 
@@ -11,6 +11,49 @@
 3. The user's existing skills under `~/.claude/skills/`
 
 ## Workflow
+
+### 6.0 Phase 5 → 6 second-pass approval gate (MANDATORY in autopilot)
+
+This is the **second write-consent gate**. Runs BEFORE any edit to `~/.claude/skills/`. The user sees every proposed Phase 6 change in plain English and approves via `AskUserQuestion`.
+
+**Sequence:**
+
+1. Perform §6.1 (read all research docs) and §6.2 (classify each proposed rule) — these are reads/analyses only, no writes.
+2. Run the **justification bar** filter (same bar as Phase 3→4):
+   - Each proposed rule must name a **concrete observable gain** — "closes a verified knowledge gap flagged in research doc 0N", "prevents silent failure X", "codifies behaviour change in library Y v2.0"
+   - Drop proposals that amount to rewording existing content with no new information
+   - Keep UNVERIFIED flags as rejected (already a Phase 6 rule) — never silently drop
+3. Print the plain-English change blocks (same format as Phase 3→4, see `phase-3-find-candidates.md §Step B`), one per proposed change. For new-skill proposals, print an extra block:
+   ```
+   New skill: <name>
+   Scope:     <one-line summary>
+   Rules:     <N> inline + <M> in references/
+   Trigger:   <filePattern / bashPattern list>
+   Pairs with: <existing skills this cross-refs>
+   ```
+4. Present the approval dialog:
+
+```
+Question: "<N> changes + <K> new skills proposed — approve?"
+Header:   "Phase 5 → 6 approval"
+Options:
+  - Label: `Approve all`
+    Description: Apply every change and create every new skill
+  - Label: `Review each`
+    Description: Walk change-by-change with approve/skip
+  - Label: `Additions only`
+    Description: Add new rules to existing skills; skip new-skill creation
+  - Label: `Cancel`
+    Description: Make no Phase 6 changes; advance to Phase 7 on nothing
+```
+
+If **Review each**, loop `AskUserQuestion` per change with `[Approve / Skip / Show source doc / Cancel review]`. "Show source doc" prints the relevant `docs/skill-research/0N-*.md` section then re-asks.
+
+**Leave-alone reminder:** existing skill wording is NOT proposed for rewording in Phase 6 unless research directly contradicts it (a FIX, not an enhancement). Additions append; they don't rephrase. A skill can be "Fits — leave alone" in Phase 2 AND gain new rules here — those are not mutually exclusive.
+
+**Healthy-library Phase 6 exit:** if the justification bar leaves zero changes (all research gems were already covered or were UNVERIFIED), print *"Research surfaced no new verified additions that pass the justification bar"* and `AskUserQuestion` with `[Advance to Phase 7 / Show what was filtered / Stop]`.
+
+Only after the user approves does §6.3 onwards execute. Cancel = advance to Phase 7 on an empty change set.
 
 ### 6.1 Read all research docs in a single pass
 

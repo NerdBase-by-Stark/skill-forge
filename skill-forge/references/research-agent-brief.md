@@ -12,10 +12,49 @@ run_in_background: true
 
 Check available subagent types first — `search-specialist` is ideal but not universal. `general-purpose` works in any Claude Code setup.
 
+### Permission-mode safety rail (CRITICAL)
+
+If the supervisor is running with `bypassPermissions`, `acceptEdits`, or `auto` permission mode, **sub-agents inherit that mode unconditionally and it cannot be overridden per sub-agent** (per Anthropic's official sub-agent docs, 2026). In those modes, a denylist in the brief is NOT sufficient — the sub-agent can auto-approve any tool that isn't explicitly forbidden.
+
+**Use a `tools:` allowlist** in every sub-agent spawn when any permissive parent mode might be active:
+
+```yaml
+tools: Read, Grep, Glob, WebSearch, WebFetch, Firecrawl, Write
+```
+
+This is enforced at the Claude Code layer (not just in the prompt), so a compromised or misled sub-agent cannot exceed the allowlist. Denylists (`disallowedTools:`) are insufficient under `bypassPermissions` — always prefer the allowlist when the parent is permissive.
+
+### Plugin-skill AskUserQuestion bug (note for users)
+
+A known bug (GitHub Issue #29547) causes `AskUserQuestion` to silently return empty answers when called from inside a Claude Code *plugin* skill — the permission evaluator bypasses the user-interaction check. **Users who install skill-forge as a plugin (not a regular user-space skill) may find consent gates silently return empty answers with Claude hallucinating selections.** Test consent gates outside plugin context before relying on them. As of 2026-04-19, user-space skills at `~/.claude/skills/<name>/` (the default install path) are not affected; only plugin-packaged skills trigger the bug.
+
 ## Prompt template (copy then fill)
+
+> **Every filled brief MUST contain the Strict Scope block verbatim.** Phase 5's pre-spawn assertion grep's for the literal phrase `STRICT SCOPE — OUTPUT IS FILE-WRITE ONLY.`; spawn aborts if missing. Do not reword.
 
 ````
 You are researching <TOPIC> to add verified rules to a <SKILL-TARGET> skill.
+
+## STRICT SCOPE — OUTPUT IS FILE-WRITE ONLY.
+
+Your deliverable is exactly one markdown file at the output path specified below. You MUST NOT:
+
+- Run `git` (any subcommand) — no `git checkout`, `git branch`, `git commit`, `git push`, `git fetch`, `git merge`, `git rebase`, `git tag`, `git reset`, `git stash`, `git remote`, nothing.
+- Run `gh` (any subcommand) — no PR creation, no issue creation, no releases, no workflow triggers.
+- Create, switch to, or push any branch (local or remote).
+- Create any commit under any name or author.
+- Open, comment on, or modify any pull request or issue.
+- Trigger any remote write (CI, webhooks, deployments).
+- Modify any file outside the specified output path.
+- Call any other Agent / sub-agent — no recursive spawning.
+
+If during research you believe a git/gh action would be useful (e.g. "this project should have a PR opened for X"), STOP and record the recommendation in your research doc under a heading `## Escalations — supervisor decides`. The supervisor will decide whether to execute; you do not.
+
+You **cannot** spawn sub-sub-agents — this is a system-enforced limitation in Claude Code per Anthropic's official sub-agent documentation. `Agent(agent_type)` has no effect when called from inside a sub-agent. If you need parallel work, STOP and record the recommendation under Escalations for the supervisor to fan out.
+
+You **cannot** call `AskUserQuestion` — the tool is unavailable to sub-agents (ref: GitHub Issue #18721). If you encounter a decision that needs human input (e.g. "should we include this source despite its paywall?"), record the options and your recommendation under Escalations; the supervisor will present the choice to the user.
+
+Violating this scope causes the supervisor's post-Phase-5 rogue-agent check to flag your output and potentially close/delete whatever you created. Stay in your lane.
 
 ## Project context
 <PROJECT NAME> is a <STACK SUMMARY: language, framework, purpose>. Version <X.Y.Z>, preparing <NEXT VERSION>. Primary platform: <Windows/macOS/Linux/etc>.

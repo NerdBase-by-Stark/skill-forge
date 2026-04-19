@@ -37,14 +37,23 @@ This loads the main `SKILL.md` with the phase table. Do NOT preload all phase re
 
 ## Step 3: Run the pipeline (autopilot by default)
 
-Default mode is **autopilot** — skill-forge gets on with it. The pipeline auto-advances through phases, printing concise per-phase summaries as text. **One mandatory `AskUserQuestion` checkpoint: Phase 4 → 5 (cost gate)** — research spawns paid agents, always consent-gate that. Terminal Phase 9 has the star-ask. Everything else auto-proceeds.
+Default mode is **autopilot** — fast where safe, but every write to `~/.claude/skills/` is consent-gated. The pipeline auto-advances between non-write phases, printing concise summaries. Writes are always preceded by a plain-English change-block presentation + `AskUserQuestion`.
+
+**Four mandatory `AskUserQuestion` stops in autopilot:**
+
+1. **Phase 3 → 4 (first-pass approval gate)** — every proposed edit and install shown with plain-English *what changes / what you gain / risks / source / reversibility*. No edits land without approval. See `references/phase-3-find-candidates.md §Checkpoint`.
+2. **Phase 4 → 5 (cost gate)** — research spawns paid agents. Always ask.
+3. **After Phase 5 (rogue-agent check)** — diff git/PR state vs. pre-Phase-5 snapshot; if a sub-agent created branches, commits, or PRs during research, stop and let the user choose close/keep/investigate. See `references/phase-5-research.md §5.9`.
+4. **Phase 5 → 6 (second-pass approval gate)** — every proposed new rule and new-skill shown with plain-English justification. No edits land without approval. See `references/phase-6-second-pass.md §6.0`.
+
+Plus the terminal Phase 9 star-ask.
 
 For each phase:
 
 1. Read the matching `references/phase-N-<name>.md` reference file
 2. Execute the phase steps
 3. Print a concise summary as plain text (what was done, counts, notable findings — 5-10 lines)
-4. **If autopilot (default):** auto-advance to the next phase. Only call `AskUserQuestion` at Phase 4→5 and Phase 9 terminal.
+4. **If autopilot (default):** auto-advance to the next phase unless the phase hits one of the four gates above. Never text-prompt "Proceed?" — use `AskUserQuestion` at every stop.
 5. **If `--interactive`:** call `AskUserQuestion` after every phase using the spec in that phase's reference file.
 
 Flags:
@@ -60,9 +69,12 @@ These are hard stops — do NOT violate:
 1. **Never spawn > 3 agents concurrently** in Phase 5. Batch them. The compliance hook flags at 5 concurrent Claude processes.
 2. **Never skip Phase 8 (QA)** even if the user passes `--skip-*` flags.
 3. **Never proceed from Phase 4 to Phase 5 without explicit consent** — research costs real money. `AskUserQuestion` cost gate is mandatory in both autopilot and interactive modes.
-4. **Never commit on the user's behalf** — edits happen but git commits are the user's call.
-5. **Always create a backup tarball** in Phase 4 before making any edits to `~/.claude/skills/`. The backup is what makes the other phases reversible and therefore skippable-from-consent in autopilot.
-6. **Phase 3 candidate dispositions:** the Phase 3 agent picks install-directly / extract-gems / skip per candidate based on the assessment table. In autopilot those picks are applied; in `--interactive` the user can override via `AskUserQuestion`. Installing directly (via `npx skills add`) is a legitimate disposition — not banned — provided the candidate passes all five assessment dimensions.
+4. **Never write to `~/.claude/skills/` without explicit user approval via `AskUserQuestion`** — the Phase 3→4 and Phase 5→6 gates present every change in plain English and require approval. Post-hoc summaries are not consent.
+5. **Never commit on the user's behalf** — edits happen but git commits are the user's call.
+6. **Always create a backup tarball** in Phase 4 before making any edits to `~/.claude/skills/`. The backup is defence-in-depth; the primary safety rail is the approval gate.
+7. **Phase 3 candidate dispositions** are the agent's *recommendations*; the user explicitly approves them at the Phase 3→4 gate. The gate lets the user approve all, skip installs only, review each, or cancel. Installing directly is a legitimate disposition if it clears the justification bar and the user approves.
+8. **Sub-agents are output-only.** Research agents write files, not git/PR side effects. Enforce via the strict-scope clause in every brief + the post-Phase-5 rogue-agent check (`phase-5-research.md §5.9`).
+9. **Bias toward no-change.** Agents have a strong bias toward finding things to edit. Skills marked "Fits — leave alone" in Phase 2 are excluded from Phase 4 edits (but NOT from Phase 5 research). A rewording with no concrete observable gain is dropped by the justification bar before the user ever sees it.
 
 ## Step 5: Progress tracking
 
