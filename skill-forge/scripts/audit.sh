@@ -112,10 +112,8 @@ errors=0
 warnings=0
 suggestions=0
 
-# Dangerous-call regex fragments assembled to avoid literal keyword hits in static scanners.
-# Character classes are semantically identical at match-time but split the contiguous keyword.
-DANGER_PY_CALL='(e[v]al|e[x]ec)'
-OS_SYS_CALL='os\.sys[t]em'
+DANGER_PY_CALL='(eval|exec)'
+OS_SYS_CALL='os\.system'
 
 # ============================================================================
 # Per-skill checks

@@ -113,7 +113,7 @@ Also document **what's missing** — things the project needs that neither user'
 
 ## When no candidates are install-worthy (niche stacks)
 
-For niche or commercial-AV / vendor-specific stacks (Q-SYS, Crestron, Extron, BSS, Dante-specific DSP, broadcast automation, proprietary audio platforms), the skills registry typically returns **zero legitimate candidates**. Top hits are almost always lexical collisions:
+For niche stacks where the skills registry has no domain experts (commercial-AV platforms, vendor-specific tooling, proprietary audio/broadcast/control systems), the registry typically returns **zero legitimate candidates**. Top hits are almost always lexical collisions:
 
 - `"qsys lua plugin"` → neovim (Lua runtime), OBS-Qt (unrelated Qt), FiveM QBox (GTA5 mod), Hammerspoon (macOS automation)
 - `"lua static analysis"` → Roblox Luau tooling (different language), FiveM lua linters

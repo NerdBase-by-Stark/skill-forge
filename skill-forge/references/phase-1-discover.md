@@ -72,9 +72,7 @@ For each stack the agent can do this by whatever method fits:
 - **Lua / Q-SYS (or any stack where the "dependencies" are built-in runtime APIs):** count the API surface actually used — Q-SYS plugins live inside `Controls.`, `Component.`, `Timer.`, `TcpSocket`, `SSH.`, `HttpClient.` etc. None of those are declared in a manifest; they are the stack. Sample the codebase to find the namespaces that matter for this project and record them as `heavy_api_surface` so later phases plan research around what's used, not what's declared.
 - **Unrecognised stack:** scan files, identify the languages, note the top symbols/patterns the codebase actually uses. Record the method used in `profile_completeness.dispatch` so the result is auditable.
 
-The goal is catching "there's a stack component nothing covers" *before* Phase 5 wastes a research stream on dead deps. Real example: 2026-04-19 biltong-buddy run — a framework-detection profile missed `zustand` (40+ imports). A second example from the 2026-04-19 qsys-plugins dry-run: dependency-based completeness would have reported empty for a project where `Controls.` has 13,664 uses, because none of that is a declared package.
-
-If any heavy-usage component is not already in `tech_stack_tags`, add it and note in `profile_completeness.new_tags_added_from_grep`.
+The goal is catching "there's a stack component nothing covers" *before* Phase 5 wastes a research stream on dead deps. If any heavy-usage component is not already in `tech_stack_tags`, add it and note in `profile_completeness.new_tags_added`.
 
 ### 1.7 Produce the profile
 
