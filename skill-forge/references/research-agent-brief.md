@@ -127,7 +127,25 @@ Ready-to-paste rules in this format:
 Target <5-10> verified gems, <3-8> proposed rules. Better to have 5 solid rules than 15 speculative ones. Maximum <600-700> lines total.
 
 ## Tools
-Use whatever web-research tools you have available — in rough preference order:
+
+### Check local tools FIRST (before web research)
+
+The Phase 1 profile lists MCP servers and local knowledge bases already available in this environment. **Check these before reaching for the web** — a question answerable from a locally indexed codebase or a domain KB costs one MCP call, versus several web fetches and a higher fabrication risk.
+
+`<AVAILABLE MCP SERVERS>` — populated from `profile.available_mcp_servers`. Examples of what to try before a web query:
+
+- **Code-index MCPs** (e.g., `jcodemunch`, treesitter-based indexers): if the question is *"how is X used in the target project"* or *"does pattern Y already exist in a sibling codebase"*, call `search_symbols` / `search_text` / `find_references` first
+- **Docs-index MCPs** (e.g., `jdocmunch`): if the question is *"what does the vendor doc say about X"* and the docs are locally indexed, query the index before fetching live
+- **Memory MCPs** (e.g., `open-brain`): call `search_thoughts` — a prior agent may have already captured the answer
+- **Local knowledge bases** (`profile.local_knowledge_bases[]`): if one of these is paired with a keyword-triggered hook (see `profile.active_hooks[]`), the KB is the canonical source the user already trusts
+
+An MCP-derived answer is still a cited answer: record the MCP name + the repo/doc path it returned, not just the fact that MCP was used.
+
+If the relevant local tool is unavailable, missing, or doesn't cover the question, proceed to web research with full citation discipline.
+
+### Web-research tools (fallback)
+
+In rough preference order:
 
 1. **`firecrawl` MCP** (if installed — best markdown output for LLM context)
 2. **`WebSearch` + `WebFetch`** (built-in Claude Code tools — universally available)
@@ -149,6 +167,7 @@ Before spawning, verify:
 - [ ] Each numbered topic is a distinct angle (no duplication with other streams)
 - [ ] Output path is under `<project>/docs/skill-research/0N-<slug>.md` with the right N
 - [ ] Gem/rule targets are realistic for the topic breadth
+- [ ] `<AVAILABLE MCP SERVERS>` filled from `profile.available_mcp_servers` (or explicitly left empty if profile has none) — never hardcoded
 
 ## Example filled brief
 
