@@ -111,6 +111,26 @@ Also document **what's missing** — things the project needs that neither user'
 2. **Driver signing workflows** — not needed now; flag for future
 ```
 
+## When no candidates are install-worthy (niche stacks)
+
+For niche stacks where the skills registry has no domain experts (commercial-AV platforms, vendor-specific tooling, proprietary audio/broadcast/control systems), the registry typically returns **zero legitimate candidates**. Top hits are almost always lexical collisions:
+
+- `"qsys lua plugin"` → neovim (Lua runtime), OBS-Qt (unrelated Qt), FiveM QBox (GTA5 mod), Hammerspoon (macOS automation)
+- `"lua static analysis"` → Roblox Luau tooling (different language), FiveM lua linters
+- `"audio dsp matrix mixer"` → Godot audio, Unreal MetaSound, general mixing patterns
+
+**In these cases, reputation-by-install-count inverts.** The expert-authored skill is often the low-install one written by a single domain specialist; high-install hits are general-purpose tutorials harvested by broad tagging. Do not apply the standard "popular = signal" heuristic.
+
+**Short-circuit rule:** if after step 3.1 all top-5 candidates across queries have *both* zero owner-reputation signal (no recognised org/brand) *and* no description overlap with `profile.tech_stack_tags` or `profile.profile_completeness.heavy_api_surface`, stop Phase 3 early and emit:
+
+> **No install-worthy candidates — niche stack.** The skills registry does not contain experts in this domain. Two alternatives Phase 3 does not cover, but worth considering outside skill-forge:
+> - **Author a hook** — for deterministic enforcement of a file-type rule (see `~/.claude/hooks/qplug-validate.sh` as a pattern: PostToolUse on `*.qplug` runs `qpdk validate`)
+> - **Author an MCP wrapper** — if you have a local knowledge base (Neo4j/Qdrant/plain docs), a small MCP server makes it addressable by every agent instead of just keyword-triggered context injection
+>
+> Neither is in skill-forge's scope. Noted so you can decide.
+
+Log the short-circuit in `audit-report.md` under `### Phase 3 — short-circuit` so the reason is preserved across runs.
+
 ## Checkpoint — Phase 3 → 4 first-pass approval gate (MANDATORY in autopilot)
 
 This is the **first write-consent gate**. Before any edit lands in `~/.claude/skills/`, the user sees every proposed Phase 4 change in plain English and approves via `AskUserQuestion`.
@@ -124,35 +144,20 @@ Combine:
 
 **"✓ Fits — leave alone" skills are excluded from the change set** — they become zero entries in this gate. (They remain in scope for Phase 5 research; research findings go through the Phase 5→6 gate.)
 
-### Step B: Print the plain-English change blocks
+### Step B: Present each proposed change in plain English
 
-For each proposed change, print:
+For every change in the filtered set, show the user:
 
-```
-┌─ Change <N> of <TOTAL> ───────────────────────────────────────┐
-│ Skill:     <skill-name>
-│ Action:    <Edit description | Fix YAML | Narrow filePattern | Add cross-ref | Install from <owner/repo> | …>
-│
-│ What this changes:
-│   <1-3 bullets describing the concrete diff — before → after where useful>
-│
-│ What you gain:
-│   <concrete observable benefit — "skill will now actually load (YAML currently broken)"
-│    NOT "description will be shorter">
-│
-│ Risks:
-│   <honest downsides — "description wording is subjective", "install brings upstream
-│    updates outside your direct control", "new filePattern might miss edge-case files">
-│
-│ Source of this proposal:
-│   <Phase 2 audit ID, Phase 3 candidate review, project memory file, etc.>
-│
-│ Reversible:
-│   <yes via backup tarball / yes via git / no — destructive>
-└───────────────────────────────────────────────────────────────┘
-```
+- **Skill + action** — which skill, what's happening to it (edit, install, fix, narrow filePattern, etc.)
+- **What changes** — the concrete diff, before → after where useful
+- **What the user gains** — a named observable benefit, not "shorter description" or "cleaner formatting"
+- **Risks** — honest downsides (subjective wording, upstream-update coupling from installs, edge-case coverage loss)
+- **Source** — which Phase 2 audit finding / Phase 3 candidate / memory file proposed this
+- **Reversibility** — backup tarball, git, or destructive
 
-If there are zero changes after filtering, skip to Step D (healthy-library exit).
+Render however reads clearly in the user's terminal. One change per block, blocks numbered or clearly separated.
+
+If the filtered change set is empty, skip to Step D (healthy-library exit).
 
 ### Step C: Ask for approval via `AskUserQuestion`
 

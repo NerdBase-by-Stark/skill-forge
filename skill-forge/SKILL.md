@@ -45,7 +45,7 @@ End-to-end workflow for improving a project's skill library. Entry point is the 
 
 | # | Phase | Output | Reference |
 |---|---|---|---|
-| 1 | **Discover** | Project profile; §1.5 grep-verified completeness check catches stack misses before Phase 5 | `references/phase-1-discover.md` |
+| 1 | **Discover** | Full-system profile: skills + hooks + MCPs + KBs + sub-projects; §1.6 grep-verified completeness (language-dispatched, includes Lua/Q-SYS) catches stack misses before Phase 5 | `references/phase-1-discover.md` |
 | 2 | **Audit** | Deterministic-scope audit of all in-scope skills (no hand-picked subset) | `references/phase-2-audit.md` |
 | 3 | **Find Candidates** | 3-5 external skills cloned to `skill-review/`, reviewed, gap analysis | `references/phase-3-find-candidates.md` |
 | 4 | **First-Pass Edits** | Clear wins applied (cross-refs, scope clarifications, known corrections) | `references/phase-4-first-pass.md` |

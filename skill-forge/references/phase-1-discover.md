@@ -1,6 +1,6 @@
 # Phase 1 — Discover
 
-**Goal:** Understand the target project well enough to make good decisions in every later phase. Output is a profile the other phases consume.
+**Goal:** Understand the target project **as a full developer system** — skill library, hooks, MCP servers, local knowledge bases, language stack, sub-projects — not just the skill files under `~/.claude/skills/`. Output is a profile the other phases consume.
 
 **Depends on:** nothing (entry phase).
 
@@ -10,83 +10,73 @@
 
 - If `/skill-forge` was invoked with `--project=<path>`, use that path
 - Otherwise use the current working directory
-- Verify the directory exists and looks like a project (has at least one of: `CLAUDE.md`, `pyproject.toml`, `package.json`, `.git/`, `README.md`)
-- If ambiguous, ask the user: `Run skill-forge against <cwd>? (or provide --project=<path>)`
+- Verify the directory exists and looks like a project (has `.git/`, a top-level `CLAUDE.md`/`README.md`, or a manifest file)
+- **Monorepo / sparse root:** if the root has no top-level manifest but `.git/` exists and depth-1 sub-directories each have their own manifests (`package.json`, `pyproject.toml`, `CLAUDE.md`, etc.), profile the whole monorepo — populate `sub_projects[]` (§1.7) so Phase 5 stream planning knows each stack. Do not ask the user which sub-project to target; skill-forge can handle heterogeneous stacks in one pass.
 
 ### 1.2 Read project signals
 
-Read in parallel (single message with multiple Read calls):
+Read relevant manifests, CLAUDE.md, README, and scan the dominant languages.
 
-- `<project>/CLAUDE.md` — project instructions (if present)
-- `<project>/README.md` — first 100 lines
-- `<project>/pyproject.toml` / `package.json` / `Cargo.toml` — stack + version
-- `<project>/src/**/__init__.py` — Python version marker (`__version__`)
+Stacks skill-forge has first-class support for:
 
-Grep for:
-- Dominant language (`.py`, `.ts`, `.go`, `.rs` file counts)
-- Frameworks (PySide6, React, FastAPI, etc.) by import lines
-- Test framework (`pytest`, `jest`, `cargo test`)
-- CI config (`.github/workflows/*.yml`)
+| Stack | Markers |
+|---|---|
+| JS/TS | `package.json`, `tsconfig.json` |
+| Python | `pyproject.toml`, `setup.py`, `requirements*.txt` |
+| Rust | `Cargo.toml` |
+| Go | `go.mod` |
+| **Lua / Q-SYS** | `*.qplug` files, `*.rockspec`, or a `qpdk` tool directory |
+
+If the target is a stack not listed (Elixir, Haskell, Zig, commercial-AV platform, etc.), profile it anyway — the agent can identify languages from file extensions and imports. Note the stack in `tech_stack_tags` so later phases can adapt.
 
 ### 1.3 Inventory existing skills
 
-List `~/.claude/skills/*/SKILL.md` and parse frontmatter for each. For each skill, capture:
+List `~/.claude/skills/*/SKILL.md` and parse frontmatter (name, description, filePattern, bashPattern, size, references/).
 
-- Name
-- Description
-- filePattern and bashPattern
-- Size (lines, ~tokens)
-- Whether it has a `references/` subdirectory
-- Whether it matches files in the target project (glob-test each filePattern against the project)
+**Also check for project-local skills** under `<project>/.claude/skills/*/SKILL.md` and any nested `<project>/*/.claude/skills/*/SKILL.md` (common in monorepos). Project-local skills are usually the most stack-specific source of truth and get priority in Phase 2 audit.
 
-**Relevant skills** = skills whose filePattern matches ≥1 file in the target, OR whose bashPattern appears in any recent shell history or scripts under the project, OR the user lists it as relevant.
+**Relevance algorithm.** A skill is relevant to the target project if ANY of:
 
-### 1.4 Check for prior skill-forge runs
+1. Its `filePattern` matches ≥1 file in the target
+2. Its `bashPattern` appears in any script or recent shell history under the project
+3. The skill declares no `filePattern` and no `bashPattern` (description-only — see TR004) but its description/keywords clearly overlap the project's stack or the actually-used API surface from §1.6
+4. The user explicitly lists it as relevant
 
-- Does `<project>/docs/skill-research/` exist? List files and their mtimes.
-- Does `<project>/.skill-forge/profile.json` exist? If so, warn the user the project has been run before; show last run date; offer to reuse research (`--skip-research`) or start fresh.
+Record `match_reason` on each relevant skill so downstream phases know whether the match was a hard trigger or a soft keyword overlap.
 
-### 1.5 Read project memory
+### 1.4 Inventory the developer surface (hooks, MCPs, KBs)
 
-Look for memory files under `~/.claude/projects/<project-path-slug>/memory/`:
-- Read `MEMORY.md` to understand what's already known
-- Note any `feedback_*.md` files — user preferences that affect how this project is handled
+Skills are not the whole story. A Claude Code environment usually includes:
 
-### 1.5 Profile-completeness grep (catch stack misses before Phase 5)
+- **Hooks** — declared in `~/.claude/settings.json`. A `PostToolUse` hook that validates `.qplug` files or a `UserPromptSubmit` hook that injects KB context on keyword matches is load-bearing infrastructure that later phases need to know about (Phase 2 audit should not flag a skill as redundant without also considering adjacent hooks; Phase 5 research agents should not duplicate work a hook already enforces).
+- **MCP servers** — declared in `~/.claude.json` and `<project>/.mcp.json`. A local code-index MCP (e.g., `jcodemunch`) that already indexes the target repo can answer Phase 5 research questions much faster and cheaper than web search. The Phase 5 research-agent brief pulls from this list.
+- **Local knowledge bases** — Neo4j/Qdrant/plain-docs directories (often under `~/ai/`) that feed KB-search hooks or MCPs. If the user's environment has already ingested the domain knowledge, Phase 5 should use it rather than re-research from the web.
 
-A structured stack profile from reading `package.json` / `pyproject.toml` is not sufficient. Declared dependencies may be unused; actual imports may reveal stack components the profile missed. Before finalising the profile, run a **grep-based completeness check** — it's free, runs in ~30 seconds, and catches misses that would otherwise cascade into Phase 5 as uncovered research topics.
+**SECURITY — HARD CONSTRAINT.** `~/.claude/settings.json` and `~/.claude.json` contain API tokens (`GITHUB_PERSONAL_ACCESS_TOKEN`, `N8N_API_KEY`, MCP connection strings, etc.). **Do not Read these files in full.** Use `jq` to extract only the structural fields you need (hook events + matchers + command strings; MCP server *names* only) and never dump values that could be secret. If unsure whether a field is safe, don't include it.
 
-For JS/TS projects:
+Record what you find under `active_hooks[]`, `available_mcp_servers[]`, and `local_knowledge_bases[]` in the profile. If any of these are empty for this environment, the fields are empty — that's fine.
 
-```bash
-cd <project>
-jq -r '.dependencies // {} | keys[]' package.json | while read pkg; do
-  count=$(grep -rEc "from [\"']$pkg" src/ 2>/dev/null | awk -F: '{s+=$2} END {print s}')
-  echo "$count $pkg"
-done | sort -rn | awk '$1 > 10 {print}'
-```
+### 1.5 Check for prior runs and read project memory
 
-For Python projects: equivalent with `pip list` + `grep -rEc "^import $pkg|^from $pkg" src/`.
+- `<project>/docs/skill-research/` — list existing research docs with mtimes (skip-research decision data)
+- `<project>/.skill-forge/profile.json` — if present from a prior run, reuse what's still valid and regenerate the rest. Don't agonise over schema migration; just refresh anything that looks outdated or missing.
+- `~/.claude/projects/<project-slug>/memory/MEMORY.md` — load prior context; note any `feedback_*.md` entries that should shape later phases.
 
-**Cross-reference against the profile's `tech_stack_tags`.** Any package with >10 import sites that isn't represented in the profile's stack is a **flag** — add it to the profile and to Phase 5 stream planning.
+### 1.6 Profile-completeness check
 
-Real example (2026-04-19 biltong-buddy run): a package.json-derived profile missed `zustand` entirely because the tag list was based on framework detection. Grep showed 40+ imports across `ProtectedRoute.tsx`, `OnboardingChecklist.tsx`, several pages. Major stack component missed. Adding it to the profile prevented a downstream Phase 5 coverage gap.
+A manifest-based stack profile is often incomplete. Declared dependencies may be unused; what's *actually used* reveals what the skills need to cover. Before finalising the profile, verify the stack by sampling actual code — don't trust `package.json`/`pyproject.toml` alone.
 
-**Output:** append to `profile.json` a `profile_completeness` block:
+For each stack the agent can do this by whatever method fits:
 
-```json
-"profile_completeness": {
-  "grep_verified": true,
-  "heavy_imports_not_in_stack_tags": [],
-  "new_tags_added_from_grep": ["zustand", "dexie"]
-}
-```
+- **JS/TS / Python / Rust / Go:** count imports of declared deps — anything with heavy usage that isn't tagged is a gap to add
+- **Lua / Q-SYS (or any stack where the "dependencies" are built-in runtime APIs):** count the API surface actually used — Q-SYS plugins live inside `Controls.`, `Component.`, `Timer.`, `TcpSocket`, `SSH.`, `HttpClient.` etc. None of those are declared in a manifest; they are the stack. Sample the codebase to find the namespaces that matter for this project and record them as `heavy_api_surface` so later phases plan research around what's used, not what's declared.
+- **Unrecognised stack:** scan files, identify the languages, note the top symbols/patterns the codebase actually uses. Record the method used in `profile_completeness.dispatch` so the result is auditable.
 
-If `heavy_imports_not_in_stack_tags` is non-empty after reconciliation, the profile is lying to downstream phases — resolve before proceeding.
+The goal is catching "there's a stack component nothing covers" *before* Phase 5 wastes a research stream on dead deps. If any heavy-usage component is not already in `tech_stack_tags`, add it and note in `profile_completeness.new_tags_added`.
 
-### 1.6 Produce the profile
+### 1.7 Produce the profile
 
-Write to `<project>/.skill-forge/profile.json`:
+Write to `<project>/.skill-forge/profile.json`. Target schema (agent fills what applies to this project; empty arrays are fine):
 
 ```json
 {
@@ -96,20 +86,35 @@ Write to `<project>/.skill-forge/profile.json`:
   "frameworks": ["nextjs", "fastapi"],
   "tech_stack_tags": ["webapp", "fullstack"],
   "relevant_skills": [
-    {"name": "vercel-react-best-practices", "tokens": 1800, "has_references": false},
-    {"name": "python-packaging", "tokens": 1320, "has_references": false}
+    {"name": "vercel-react-best-practices", "match_reason": "filePattern"},
+    {"name": "qsys-plugin-patterns", "match_reason": "keyword-fallback"}
   ],
-  "memory_files": [
-    "feedback_skill_progressive_disclosure.md"
+  "project_local_skills": [],
+  "active_hooks": [
+    {"event": "PostToolUse", "matcher": "Write|Edit", "commands": ["bash ~/.claude/hooks/qplug-validate.sh"]}
   ],
+  "available_mcp_servers": ["jcodemunch", "jdocmunch", "open-brain"],
+  "local_knowledge_bases": [
+    {"path": "~/ai/qsys-kb", "hint": "Q-SYS Neo4j + Qdrant"}
+  ],
+  "sub_projects": [],
+  "memory_files": [],
+  "profile_completeness": {
+    "verified": true,
+    "dispatch": "lua-qsys",
+    "heavy_api_surface": [{"namespace": "Controls", "count": 13664}],
+    "new_tags_added": []
+  },
   "last_run": null,
   "prior_research_count": 0
 }
 ```
 
+Profile is the agent's honest snapshot of what's here — not every field will be populated on every project. Missing fields are missing; don't invent data.
+
 ## Checkpoint — call `AskUserQuestion`
 
-Print the phase summary as text (5-10 lines — what was done, counts, notable findings). Keep it short. Then **call `AskUserQuestion`** (never a text prompt — users skim and miss them):
+Print the phase summary as text (5-10 lines — what was done, counts, notable findings). Keep it short. Then **call `AskUserQuestion`**:
 
 ```
 Question: "Discovery complete — next step?"
@@ -123,17 +128,12 @@ Options:
     Description: Exit; profile saved for later --from-phase resume
 ```
 
-Option labels are short on purpose — users shouldn't have to read a paragraph to pick. Descriptions show below each label in the dialog.
-
 ### If user picks "Explain more"
 
-Print this detailed explanation to the user, then **re-call `AskUserQuestion` with the same options** (the user will pick one of the non-Explain-more options the second time):
+> Phase 2 runs scripts/audit.sh on your existing skills — YAML validity, main SKILL.md size (≤500 lines per 2026 Anthropic guidance), description length, rule coverage for progressive-disclosure skills, cross-skill filePattern overlap, trigger presence (TR004), orphan reference files. Produces audit-report.md. ~10 seconds. No edits.
 
-> Phase 2 runs scripts/audit.sh on your existing skills — checks YAML validity, main SKILL.md size (flags >2.5k tokens), description length (≤300 chars), rule coverage for progressive-disclosure skills, cross-skill filePattern overlap, and orphan reference files. Produces audit-report.md. Takes ~10 seconds. No edits made.
-
-Never loop more than twice — if they pick "Explain more" again, default to "Stop" and ask them what they'd actually like to do.
-
+Never loop "Explain more" more than twice — default to "Stop" and ask what they actually want.
 
 ## Skipping this phase
 
-If `--profile=<path-to-existing-profile.json>` is passed, load it and skip discovery. Useful for repeated runs in the same session.
+If `--profile=<path-to-existing-profile.json>` is passed, load it and skip discovery. If the loaded profile looks stale or incomplete (missing fields, old mtime, project structure has changed), just regenerate it.
