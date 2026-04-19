@@ -128,32 +128,9 @@ Target <5-10> verified gems, <3-8> proposed rules. Better to have 5 solid rules 
 
 ## Tools
 
-### Check local tools FIRST (before web research)
+**Check local tools first.** The Phase 1 profile lists MCP servers (`profile.available_mcp_servers`) and local knowledge bases (`profile.local_knowledge_bases`) already available in this environment. A code-index MCP that already knows the target repo, a docs-index MCP, a domain KB, or a memory MCP that may contain prior findings — all of these are cheaper and more reliable than web research. Try them before reaching for the web. An MCP-derived answer is still a cited answer (record the MCP name + the path/result it returned).
 
-The Phase 1 profile lists MCP servers and local knowledge bases already available in this environment. **Check these before reaching for the web** — a question answerable from a locally indexed codebase or a domain KB costs one MCP call, versus several web fetches and a higher fabrication risk.
-
-`<AVAILABLE MCP SERVERS>` — populated from `profile.available_mcp_servers`. Examples of what to try before a web query:
-
-- **Code-index MCPs** (e.g., `jcodemunch`, treesitter-based indexers): if the question is *"how is X used in the target project"* or *"does pattern Y already exist in a sibling codebase"*, call `search_symbols` / `search_text` / `find_references` first
-- **Docs-index MCPs** (e.g., `jdocmunch`): if the question is *"what does the vendor doc say about X"* and the docs are locally indexed, query the index before fetching live
-- **Memory MCPs** (e.g., `open-brain`): call `search_thoughts` — a prior agent may have already captured the answer
-- **Local knowledge bases** (`profile.local_knowledge_bases[]`): if one of these is paired with a keyword-triggered hook (see `profile.active_hooks[]`), the KB is the canonical source the user already trusts
-
-An MCP-derived answer is still a cited answer: record the MCP name + the repo/doc path it returned, not just the fact that MCP was used.
-
-If the relevant local tool is unavailable, missing, or doesn't cover the question, proceed to web research with full citation discipline.
-
-### Web-research tools (fallback)
-
-In rough preference order:
-
-1. **`firecrawl` MCP** (if installed — best markdown output for LLM context)
-2. **`WebSearch` + `WebFetch`** (built-in Claude Code tools — universally available)
-3. **Other web/search MCPs** (Tavily, Perplexity, Brave Search, etc. — use what you have)
-
-Any of these work. Prioritize quality of sources over which tool you used. Grep GitHub issues for confirmed-closed-with-fix. Read official docs for the primary source of truth on API behavior.
-
-Quality over breadth.
+If the relevant local tool is unavailable or doesn't cover the question, proceed to web research. Preference order: `firecrawl` MCP → `WebSearch`+`WebFetch` → other web MCPs. Quality over breadth. Grep GitHub issues for confirmed-fix; read official docs for primary-source API behavior.
 ````
 
 ## Filling checklist
@@ -167,7 +144,6 @@ Before spawning, verify:
 - [ ] Each numbered topic is a distinct angle (no duplication with other streams)
 - [ ] Output path is under `<project>/docs/skill-research/0N-<slug>.md` with the right N
 - [ ] Gem/rule targets are realistic for the topic breadth
-- [ ] `<AVAILABLE MCP SERVERS>` filled from `profile.available_mcp_servers` (or explicitly left empty if profile has none) — never hardcoded
 
 ## Example filled brief
 

@@ -186,7 +186,7 @@ EOF
     # That's valid for reference-style skills, but must be intentional — flag
     # so the author confirms the choice rather than defaults to it by accident.
     if [[ "$fp_count" -eq 0 ]] && [[ "$bp_count" -eq 0 ]]; then
-        emit "TR004" "WARNING" "No filePattern or bashPattern declared — discoverable via description matching only; add triggers or document intent in main SKILL.md"
+        emit "TR004" "SUGGESTION" "No filePattern or bashPattern declared — discoverable via description matching only; add triggers if the skill is meant to auto-fire on specific file types or commands"
     else
         emit_ok "TR004 Triggers declared ($fp_count filePattern, $bp_count bashPattern)"
     fi

@@ -5,32 +5,28 @@ All notable changes to this project will be documented in this file. Format loos
 ## [0.2.2] — 2026-04-19
 
 ### Theme
-**System-aware Phase 1.** Triggered by a Q-SYS-plugins dry-run (Lua monorepo, completely different stack from prior biltong run) that surfaced 12 gaps centred on a single root cause: Phase 1 only inventoried `~/.claude/skills/`, ignoring the rest of the developer surface (hooks, MCP servers, local knowledge bases, non-JS/Python stacks, sparse-root monorepos, project-local skills). Same philosophy as 0.2.1 — process fixes over new models.
+**System-aware Phase 1.** Triggered by a Q-SYS-plugins dry-run (Lua monorepo, completely different stack from prior biltong run) that surfaced 12 gaps centred on a single root cause: Phase 1 only inventoried `~/.claude/skills/`, ignoring the rest of the developer surface (hooks, MCP servers, local knowledge bases, non-JS/Python stacks, monorepos, project-local skills). Same philosophy as 0.2.1 — process fixes over new models. Written for an intelligent agent to execute, not as a prescriptive script.
 
 ### Added
-- **TR004 audit rule** in `scripts/audit.sh` — WARNING when a skill declares no `filePattern` AND no `bashPattern` (description-only discovery). Fires on all 6 triggerless skills in a typical user library on first run; author decides per-skill whether to add triggers or acknowledge intent. Shipped without escape hatch; retroactive only if false positives surface. (Closes G4/G5.)
-- **Phase 1.1a sparse-root / monorepo detection.** If root has `.git/` but no top-level manifest, depth-1 scan; if ≥2 sub-projects each have their own manifest, `AskUserQuestion` lets the user target the whole monorepo (with `sub_projects[]` in profile) or re-enter against one sub-project. (Closes G1/G7.)
-- **Phase 1.2 Lua / Q-SYS stack detection.** New manifest table row recognises `*.qplug`, `*.rockspec`, and `qpdk` as Q-SYS markers. (Closes G2.)
-- **Phase 1.3 keyword-fallback relevance algorithm.** Skills with no filePattern/bashPattern match via description-keyword overlap against `tech_stack_tags` or `heavy_api_surface`. Hook-adjacent matches marked with `match_reason: "hook-adjacent"` so they don't drive Phase 3/5 targeting alone.
-- **Phase 1.3a project-local skills inventory** — `find <project> -path '*/.claude/skills/*/SKILL.md'`, adds them to profile's `project_local_skills[]`. Project-local skills get priority in Phase 2 audit. (Closes G6.)
-- **Phase 1.4a active-hooks inventory** — extracts `~/.claude/settings.json` hook structure via `jq` (keys only, never values — contains secrets). Adds `active_hooks[]` to profile. (Closes G12.)
-- **Phase 1.4b MCP-server inventory** — names-only extraction from `~/.claude.json` (connection values may be tokens, never read). Adds `available_mcp_servers[]` to profile. (Closes G13.)
-- **Phase 1.4c local-knowledge-base inventory** — scans `~/ai/*knowledge*`, `~/ai/*-kb`, `~/ai/*ingestion`, project-local equivalents. Adds `local_knowledge_bases[]` to profile. (Closes G14.)
-- **Phase 1.6 language dispatch for profile-completeness grep** — JS/TS branch (existing), Python branch (existing), **new Lua/Q-SYS branch** measures API-surface usage (`Controls.`, `Component.`, `Timer.`, `TcpSocket`, `SSH.`, `HttpClient.`) since runtime namespaces aren't declared deps, plus `require()` for LuaRocks. Unrecognised-stack fallback records `grep_skipped_reason` instead of silently pretending verification. (Closes G3.)
-- **Research-agent brief MCP awareness** (`references/research-agent-brief.md`). New "Check local tools FIRST" section instructs agents to query `jcodemunch` / `jdocmunch` / `open-brain` / etc. and local KBs before web research. An MCP-derived answer is still cited (MCP name + repo/doc path). (Closes G13 downstream.)
-- **Phase 3 niche-stack guidance** (`references/phase-3-find-candidates.md`). New "When no candidates are install-worthy" section documents that reputation-by-installs *inverts* for niche / commercial-AV stacks (Q-SYS, Crestron, Extron, BSS, etc.); expert-authored skills are often the low-install ones. Short-circuit rule prevents wasted agent time. Alternative gap-fillers surfaced (hook authorship, MCP wrapper) — out of skill-forge scope but noted. (Closes G8/G9.)
+- **TR004 audit rule** in `scripts/audit.sh` — SUGGESTION when a skill declares no `filePattern` AND no `bashPattern` (description-only discovery). Gently prompts the author to add triggers if the skill is meant to auto-fire on specific file types or commands. (Closes G4/G5.)
+- **Phase 1 rewritten around a full developer-surface profile.** A single section (§1.4) instructs the agent to inventory hooks (`~/.claude/settings.json`), MCP servers (`~/.claude.json`, project `.mcp.json`), and local knowledge bases as first-class parts of the stack. Later phases (2 audit, 5 research, 6 extraction) consume `active_hooks[]`, `available_mcp_servers[]`, `local_knowledge_bases[]` from the profile. (Closes G12, G13, G14.)
+- **Project-local skills inventory** — §1.3 now also scans `<project>/.claude/skills/` and nested sub-project skill dirs. Project-local skills get priority in Phase 2 audit. (Closes G6.)
+- **Monorepo / sparse-root handling** — §1.1 defaults to profiling the whole monorepo with `sub_projects[]` populated so Phase 5 stream planning knows each stack; no user question required. (Closes G1, G7.)
+- **Lua / Q-SYS stack support** — §1.2 lists `.qplug` / `.rockspec` / `qpdk` as first-class stack markers. §1.6 completeness check tells the agent to measure *actual API surface usage* for stacks where dependencies are built-in runtime namespaces (Q-SYS: `Controls.`, `Component.`, `Timer.`, etc.), rather than assuming a package-manifest-based grep suffices. (Closes G2, G3.)
+- **Description-keyword-fallback relevance** — §1.3 relevance algorithm now matches description-only skills via keyword overlap with stack tags or heavy-API-surface entries, closing the blind spot where triggerless Q-SYS skills scored zero relevance against a Q-SYS project.
+- **Research-agent brief: check local tools first** (`references/research-agent-brief.md`). A trimmed paragraph instructs Phase 5 agents to try code-index / docs-index / memory MCPs and local KBs before web research. An MCP-derived answer is still cited. (Closes G13 downstream.)
+- **Phase 3 niche-stack guidance** (`references/phase-3-find-candidates.md`). New section documents that reputation-by-installs *inverts* for niche / commercial-AV stacks (Q-SYS, Crestron, Extron, BSS, etc.); expert-authored skills are often the low-install ones. Short-circuit rule prevents wasted agent time. Hook / MCP authorship surfaced as alternative gap-fillers (out of skill-forge scope). (Closes G8, G9.)
 
 ### Changed
-- **`profile.json` schema v2.** New `profile_schema_version: 2` field. Migration from v1 populates new fields (`active_hooks`, `available_mcp_servers`, `local_knowledge_bases`, `project_local_skills`, `sub_projects`, `profile_completeness.heavy_api_surface`) with safe defaults. `--from-phase=N` with an old profile triggers inline migration.
-- **Phase 1 reference file renumbered** — fixed a pre-existing duplicate-section bug where two `§1.5` headings coexisted. Now §1.5 (Read project memory) and §1.6 (Profile-completeness grep) are distinct.
+- **Phase 1 reference file** rewritten in agent-guidance style rather than prescriptive bash/jq recipes. The earlier draft prescribed exact commands for the agent to run; this release trusts the agent to figure out *how* once it knows *what* matters. Hard security constraints (don't Read settings.json / .claude.json in full — they contain API tokens) are retained as explicit rules. Fixes a pre-existing duplicate §1.5 numbering bug.
 - **`SKILL.md` phase table** Phase 1 summary updated to reflect full-system profiling.
 
 ### Security
-- `~/.claude/settings.json` and `~/.claude.json` are called out in the Phase 1 reference as DO-NOT-READ files (contain API tokens). Hook and MCP inventories use `jq` to extract structure only, never values.
+- `~/.claude/settings.json` and `~/.claude.json` called out as DO-NOT-READ files (contain API tokens). Phase 1 inventory uses `jq` to extract structure only, never values.
 
 ### Known limitations
-- Hook↔skill redundancy detection is not yet automated. Phase 2 audit surfaces `active_hooks` in the profile but doesn't auto-flag "skill X is made redundant by hook Y" — deferred to a later release; needs design work.
-- Phase 3 niche-stack short-circuit suggests authoring a hook or MCP wrapper but does not author them; out of scope.
+- Hook↔skill redundancy detection is not yet automated. Phase 2 audit surfaces `active_hooks` in the profile but doesn't auto-flag "skill X is redundant with hook Y" — deferred; needs design work.
+- Phase 3 niche-stack short-circuit suggests hook or MCP authorship as alternatives but does not author them; out of scope.
 
 ## [0.1.0] — 2026-04-16
 
