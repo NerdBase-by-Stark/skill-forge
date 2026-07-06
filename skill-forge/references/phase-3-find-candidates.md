@@ -26,9 +26,14 @@ For each query, the output lists `<owner>/<repo>@<skill-name>` with install coun
 - Owner reputation (prefer `vercel-labs`, `github`, `anthropic-*`, known orgs over unknown)
 
 Reject outright:
-- Skills with 0 installs and no recognized owner
+- Skills with 0 installs and no recognized owner — **except** when the skill's domain matches the project stack: this rule yields to the expert-domain signal (see "When no candidates are install-worthy" below), where low-install, no-name-owner skills are often the expert-authored ones
 - Skills whose description reads as gibberish or AI-slop
 - Skills that duplicate functionality already covered by user's existing skills (Phase 2 identified these)
+
+**Definitions** (these terms recur in §3.5's disposition criteria):
+- **Recognized / reputable owner** — the owner account also maintains ≥1 repo with ≥50 stars, OR is the vendor of the tool in question
+- **Actively maintained** — a commit within the last 12 months
+- **Content is current** — no deprecated-API references for the pinned versions in the target project
 
 ### 3.3 Clone top 3-5 for review
 
@@ -41,6 +46,8 @@ git clone --depth 1 https://github.com/<owner>/<repo>.git <owner>-<repo>
 ```
 
 Add `skill-review/` to the target project's `.gitignore` if not already there.
+
+**Failure path:** if `git clone` fails (network, auth, repo gone) or the clone contains no SKILL.md anywhere, retry at most once, then record the candidate as "unreviewable — skipped (reason)" in the disposition table and continue. Never let one bad candidate stall the phase.
 
 ### 3.4 Locate each candidate's SKILL.md
 
@@ -69,9 +76,11 @@ Based on the assessment, pick **one of three dispositions** per candidate:
 
 | Disposition | When it's the right call | Action |
 |---|---|---|
-| **Install directly** | Perfect-match stack + actively maintained + official/reputable owner + zero overlap with existing user skills + content is current | `npx skills add <owner>/<repo>@<skill> -g -y` in Phase 4 |
+| **Install directly** | Perfect-match stack + actively maintained + official/reputable owner + zero overlap with existing user skills + content is current | `npx skills add <owner>/<repo> --skill <skill-name> -y` in Phase 4 |
 | **Extract gems** | Partial fit — useful chunks exist but the whole skill doesn't fit, OR content needs project-specific tailoring, OR you want user-owned evolution | Extract cited rules into the user's existing skills (or a new project-specific skill) in Phase 6 |
 | **Skip** | Irrelevant, duplicate of user skill, low quality, stale, or wrong version | No action; log the reason |
+
+**Install-form warning:** the `<pkg>@<skill>` addressing form is only valid for `npx skills use`, not `add` — under `add` the CLI ignores the `@<skill>` suffix and installs every skill in the repo. Verified 2026-07-06 against the live CLI. Use `--skill <skill-name>` to select one skill. Install project-local by default; add `-g` only if the user explicitly asks for a global install.
 
 **The old rule was "never install directly, always extract".** That's been relaxed: if a candidate passes all five dimensions above AND the user wants upstream updates (via `npx skills update`), installing directly is the right call. The extract-gems path is for when you need *partial* content or *project-specific* tailoring.
 
@@ -135,6 +144,8 @@ Log the short-circuit in `audit-report.md` under `### Phase 3 — short-circuit`
 
 This is the **first write-consent gate**. Before any edit lands in `~/.claude/skills/`, the user sees every proposed Phase 4 change in plain English and approves via `AskUserQuestion`.
 
+Mode note: in autopilot, the 3→4 gate below is the stop; per-candidate asks (the §3.5 overrides) are interactive-only.
+
 ### Step A: Build the proposed change set
 
 Combine:
@@ -163,7 +174,7 @@ If the filtered change set is empty, skip to Step D (healthy-library exit).
 
 ```
 Question: "<N> changes proposed — approve?"
-Header:   "Phase 3 → 4 approval"
+Header:   "3→4 approval"
 Options:
   - Label: `Approve all`
     Description: Apply all <N> changes; creates backup tarball first
@@ -183,7 +194,7 @@ If the change set is empty (all skills "Fits — leave alone" AND no install-wor
 
 ```
 Question: "Library is healthy — no edits proposed. Next?"
-Header:   "Phase 3 → 4 (healthy)"
+Header:   "3→4 healthy"
 Options:
   - Label: `Run Phase 5 research anyway`
     Description: Research may surface new verified rules to add to existing skills

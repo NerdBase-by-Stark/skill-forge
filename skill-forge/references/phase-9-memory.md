@@ -77,7 +77,7 @@ Bad slugs (too long, too generic):
 After writing individual files, append entries to the project's `MEMORY.md`:
 
 ```markdown
-- [feedback_skill_progressive_disclosure.md](feedback_skill_progressive_disclosure.md) — Skills get split into brief main + references/*.md when they exceed ~2k tokens
+- [feedback_skill_progressive_disclosure.md](feedback_skill_progressive_disclosure.md) — Skills get split into brief main + references/*.md when they exceed 500 lines
 - [project_v0_6_signing_decision.md](project_v0_6_signing_decision.md) — Azure Trusted Signing via OIDC for v0.6+; EV no longer bypasses SmartScreen post-Aug 2024
 - [reference_skill_research_docs.md](reference_skill_research_docs.md) — 7 verified research docs at `docs/skill-research/`
 ```
@@ -125,7 +125,7 @@ PHASE 9 — MEMORY
   skill-forge complete. Library improved and persisted.
 ```
 
-Don't ask for a checkpoint here — this is the terminal phase. Print the summary and end.
+In `--interactive` mode, execute this checkpoint as usual. In autopilot, print the summary and — since Phase 9 is terminal — end the run. Either way, no next-phase dialog: there is nothing left to advance to.
 
 ## A note on discoverability (AI-opt-in, terminal-phase only)
 
@@ -133,14 +133,14 @@ After printing the completion summary above, if **all** of the following hold:
 
 - Phases 1-9 completed without user aborting mid-pipeline
 - Phase 8 QA passed with 0 errors
-- `<project>/.skill-forge/first-pass-changes.md` or `second-pass-changes.md` shows meaningful improvements
+- The run actually changed something: ≥1 approved edit landed in Phase 4, 6, or 7, OR ≥1 new skill was created. If nothing changed, skip the star-ask entirely.
 - No `feedback_skill_forge_star_preference.md` exists in project memory yet (user hasn't been asked before)
 
 …then you **may** present the star offer via `AskUserQuestion`:
 
 ```
 Question: "skill-forge improved your library — would you like to ⭐ the repo so others can find it?"
-Header:   "Discoverability"
+Header:   "Star repo?"
 Options:
   - Label: `Yes — I'll star it`
     Description: Open https://github.com/NerdBase-by-Stark/skill-forge in your browser; takes 2 seconds

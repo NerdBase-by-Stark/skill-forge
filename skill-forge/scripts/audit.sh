@@ -3,15 +3,24 @@
 #
 # Usage:
 #   audit.sh [OPTIONS] <skill-path> [<skill-path> ...]
+#   audit.sh --self
 #
 # Options:
 #   --min-severity LEVEL   Filter output: critical|error|warning|suggestion (default: suggestion)
 #   --ignore RULES         Comma-separated rule IDs to skip (e.g. FM003,SS001)
 #   --format FORMAT        Output format: text|json (default: text)
+#   --self                 Verify this skill-forge installation is complete, then exit
 #   -h, --help             Show this help
 #
 # Rule ID system:
 #   FM001-FM099  Frontmatter
+#                  FM001: YAML frontmatter parses; name+description present
+#                  FM002: name matches directory
+#                  FM003: description length ≤ 300 chars
+#                  FM004: description states when NOT to use (negative scope)
+#                  FM005: description written in third person
+#                  FM006: description avoids always-invoke language
+#                  FM007: destructive-keyword skill without disable-model-invocation
 #   SS001-SS099  Structure / Size
 #   TR001-TR099  Triggers (filePattern / bashPattern)
 #                  TR001: filePattern recursive-wildcard overreach
@@ -22,24 +31,58 @@
 #   SC001-SC099  Security (bundled scripts)
 #
 # Severity: CRITICAL / ERROR / WARNING / SUGGESTION
+#
+# Exit codes: 0 = no critical/error findings; 1 = critical or error findings
+# (or invalid input); 2 = bad flags. JSON mode uses the same exit codes.
 
 set -u
 
 MIN_SEVERITY="suggestion"
 IGNORE_RULES=""
 OUTPUT_FORMAT="text"
+SELF_CHECK=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --min-severity) MIN_SEVERITY="${2:-suggestion}"; shift 2 ;;
         --ignore)       IGNORE_RULES="${2:-}"; shift 2 ;;
         --format)       OUTPUT_FORMAT="${2:-text}"; shift 2 ;;
+        --self)         SELF_CHECK=1; shift ;;
         -h|--help)      sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         --) shift; break ;;
         -*) echo "Unknown flag: $1" >&2; exit 2 ;;
         *)  break ;;
     esac
 done
+
+if [[ "$OUTPUT_FORMAT" != "text" ]] && [[ "$OUTPUT_FORMAT" != "json" ]]; then
+    echo "Unknown --format '$OUTPUT_FORMAT' (expected text|json)" >&2; exit 2
+fi
+
+# ============================================================================
+# --self: installation completeness check (runs before path validation)
+# ============================================================================
+if [[ "$SELF_CHECK" -eq 1 ]]; then
+    SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+    SKILL_DIR=$(dirname "$SCRIPT_DIR")
+    self_fail=0
+    check() { # check <label> <ok:0|1> <fix-hint>
+        if [[ "$2" -eq 0 ]]; then echo "PASS  $1"; else echo "FAIL  $1 — fix: $3"; self_fail=1; fi
+    }
+    [[ -f "$SKILL_DIR/SKILL.md" ]]; check "SKILL.md present at $SKILL_DIR" $? "re-run install.sh from the skill-forge repo"
+    ref_count=$(find "$SKILL_DIR/references" -name '*.md' 2>/dev/null | wc -l)
+    [[ "$ref_count" -ge 11 ]]; check "references/*.md count $ref_count (expected ≥ 11)" $? "re-run install.sh from the skill-forge repo"
+    [[ -x "${BASH_SOURCE[0]}" ]]; check "audit.sh executable bit" $? "chmod +x $SCRIPT_DIR/audit.sh"
+    [[ -f "$HOME/.claude/commands/skill-forge.md" ]]; check "slash command installed at ~/.claude/commands/skill-forge.md" $? "re-run install.sh from the skill-forge repo"
+    version=$(grep -m1 '^version:' "$SKILL_DIR/SKILL.md" 2>/dev/null | sed 's/^version:[[:space:]]*//')
+    [[ -n "$version" ]]; check "version field in SKILL.md frontmatter (${version:-absent})" $? "reinstall from a repo at ≥ v0.3.0"
+    if [[ -f "$SKILL_DIR/.install-manifest" ]]; then
+        echo "PASS  .install-manifest present ($(grep -m1 '^installed_at=' "$SKILL_DIR/.install-manifest" 2>/dev/null || echo 'no date'))"
+    else
+        echo "INFO  no .install-manifest — this is a repo copy, or an install made before v0.3.0"
+    fi
+    if [[ "$self_fail" -eq 1 ]]; then echo "SELF-CHECK: FAIL"; exit 1; else echo "SELF-CHECK: PASS"; exit 0; fi
+fi
 
 if [[ $# -lt 1 ]]; then
     echo "Usage: $0 [--min-severity LEVEL] [--ignore RULE_IDS] [--format text|json] <skill-path> [<skill-path> ...]"
@@ -62,12 +105,24 @@ YELLOW=$'\033[0;33m'
 BLUE=$'\033[0;34m'
 NC=$'\033[0m'
 
+# JSON findings accumulator: one record per line, fields separated by \x1f
+FINDINGS_TMP=$(mktemp)
+trap 'rm -f "$FINDINGS_TMP"' EXIT
+US=$'\x1f'
+
+txt() { # print only in text mode
+    [[ "$OUTPUT_FORMAT" == "text" ]] && echo "$@"
+    return 0
+}
+
 sev_num() {
     case "$1" in
         critical) echo 4 ;; error) echo 3 ;; warning) echo 2 ;; suggestion) echo 1 ;; *) echo 0 ;;
     esac
 }
 MIN_SEV_NUM=$(sev_num "$MIN_SEVERITY")
+
+current_skill=""
 
 emit() {
     local rule_id="$1" sev="$2" msg="$3"
@@ -79,31 +134,33 @@ emit() {
     if [[ "$sev_n" -lt "$MIN_SEV_NUM" ]]; then
         return 0
     fi
+    printf '%s\n' "${current_skill}${US}${rule_id}${US}${sev_lc}${US}${msg}" >> "$FINDINGS_TMP"
     case "$sev_lc" in
-        critical) echo "  ${RED}✗${NC} [CRITICAL ${rule_id}] ${msg}"; critical=$((critical+1)) ;;
-        error)    echo "  ${RED}✗${NC} [ERROR    ${rule_id}] ${msg}"; errors=$((errors+1)) ;;
-        warning)  echo "  ${YELLOW}⚠${NC} [WARNING  ${rule_id}] ${msg}"; warnings=$((warnings+1)) ;;
-        suggestion) echo "  ${BLUE}i${NC} [SUGGEST  ${rule_id}] ${msg}"; suggestions=$((suggestions+1)) ;;
+        critical) txt "  ${RED}✗${NC} [CRITICAL ${rule_id}] ${msg}"; critical=$((critical+1)) ;;
+        error)    txt "  ${RED}✗${NC} [ERROR    ${rule_id}] ${msg}"; errors=$((errors+1)) ;;
+        warning)  txt "  ${YELLOW}⚠${NC} [WARNING  ${rule_id}] ${msg}"; warnings=$((warnings+1)) ;;
+        suggestion) txt "  ${BLUE}i${NC} [SUGGEST  ${rule_id}] ${msg}"; suggestions=$((suggestions+1)) ;;
     esac
 }
 
 emit_ok() {
     if [[ "$MIN_SEV_NUM" -le 1 ]]; then
-        echo "  ${GREEN}✓${NC} $1"
+        txt "  ${GREEN}✓${NC} $1"
     fi
 }
 
 declare -a SKILLS=()
 for path in "$@"; do
     if [[ ! -f "$path/SKILL.md" ]]; then
-        echo "${RED}✗${NC} $path: no SKILL.md found"
+        txt "${RED}✗${NC} $path: no SKILL.md found"
         continue
     fi
     SKILLS+=("$path")
 done
 
 if [[ ${#SKILLS[@]} -eq 0 ]]; then
-    echo "${RED}No valid skills found${NC}"
+    txt "${RED}No valid skills found${NC}"
+    [[ "$OUTPUT_FORMAT" == "json" ]] && echo '{"findings": [], "summary": {"error": "no valid skills found"}}'
     exit 1
 fi
 
@@ -120,7 +177,8 @@ OS_SYS_CALL='os\.system'
 # ============================================================================
 for skill in "${SKILLS[@]}"; do
     name=$(basename "$skill")
-    echo "=== $name ==="
+    current_skill="$name"
+    txt "=== $name ==="
 
     main="$skill/SKILL.md"
 
@@ -145,7 +203,8 @@ desc = str(fm.get("description", "")).replace("\n", " ").strip()
 fm_name = fm.get("name", "")
 file_patterns = fm.get("filePattern", []) or []
 bash_patterns = fm.get("bashPattern", []) or []
-print(f"OK|{fm_name}|{len(desc)}|{len(file_patterns)}|{len(bash_patterns)}")
+dmi = 1 if fm.get("disable-model-invocation") else 0
+print(f"OK|{fm_name}|{len(desc)}|{len(file_patterns)}|{len(bash_patterns)}|{dmi}")
 EOF
 )
 
@@ -159,10 +218,26 @@ EOF
         MISSING:*)
             emit "FM001" "ERROR" "Frontmatter missing required fields: ${yaml_check#MISSING: }"; continue ;;
         OK|*)
-            IFS='|' read -r _ fm_name desc_len fp_count bp_count <<< "$yaml_check"
+            IFS='|' read -r _ fm_name desc_len fp_count bp_count dmi_flag <<< "$yaml_check"
             emit_ok "FM001 Frontmatter valid"
             ;;
     esac
+
+    # Description text (for FM004-FM007 content checks)
+    desc_text=$(python3 << EOF
+import yaml
+with open("$main") as f:
+    content = f.read()
+parts = content.split("---", 2)
+fm = {}
+if len(parts) >= 3:
+    try:
+        fm = yaml.safe_load(parts[1]) or {}
+    except Exception:
+        fm = {}
+print(str(fm.get("description", "")).replace("\n", " ").strip())
+EOF
+)
 
     # FM002: Name matches directory
     if [[ "$fm_name" != "$name" ]]; then
@@ -176,6 +251,37 @@ EOF
         emit "FM003" "WARNING" "Description is $desc_len chars (target ≤ 300)"
     else
         emit_ok "FM003 Description $desc_len chars"
+    fi
+
+    # FM004: Description states when NOT to use (negative scope)
+    # The single most common real-world compliance failure (2026-05 telemetry:
+    # 69/73 skills missing it). Cheap marker regex; WARNING proposes a one-line
+    # append, never a rewrite.
+    if echo "$desc_text" | grep -qiE "\b(NOT|don'?t|do not|skip|never|only for|instead of|except)\b"; then
+        emit_ok "FM004 Negative scope present in description"
+    else
+        emit "FM004" "WARNING" "Description has no 'when NOT to use' clause — add one line of negative scope (e.g. 'Not for X; see Y instead')"
+    fi
+
+    # FM005: Third-person description
+    if echo "$desc_text" | grep -qiE "^(I |You |We )|\bI can\b|\byou can\b|\bhelps you\b|\bwe can\b"; then
+        emit "FM005" "WARNING" "Description uses first/second person — rewrite in third person (selection reliability varies across models)"
+    else
+        emit_ok "FM005 Description is third person"
+    fi
+
+    # FM006: Always-invoke language in description
+    if echo "$desc_text" | grep -qiE "\b(always invoke|always use|you must|must run|must use|before any|MANDATORY)\b"; then
+        emit "FM006" "WARNING" "Description contains always-invoke language — over-triggers the skill catalog; describe the specific task instead"
+    else
+        emit_ok "FM006 No always-invoke language"
+    fi
+
+    # FM007: Destructive-keyword skill without disable-model-invocation
+    if echo "$desc_text" | grep -qiE "\b(delete|migrate|deploy|install|rotate|overwrite|drop table)\b" && [[ "${dmi_flag:-0}" -eq 0 ]]; then
+        emit "FM007" "SUGGESTION" "Description mentions destructive operations but frontmatter lacks disable-model-invocation — consider requiring explicit /invocation"
+    else
+        emit_ok "FM007 disable-model-invocation appropriate"
     fi
 
     # TR004: Skill has no declared triggers (description-only discovery)
@@ -232,7 +338,15 @@ EOF
         fi
     fi
 
-    # RI001/RI002: References integrity
+    # RI001: broken references — checked whether or not references/ exists
+    # (a mention with NO references/ dir at all is the worst case, not a skip)
+    for ref_mentioned in $(grep -oE 'references/[a-z0-9_-]+\.md' "$main" | sort -u); do
+        if [[ ! -f "$skill/$ref_mentioned" ]]; then
+            emit "RI001" "ERROR" "Main references $ref_mentioned but file doesn't exist"
+        fi
+    done
+
+    # RI002+: References integrity for skills that have a references/ dir
     if [[ -d "$skill/references" ]]; then
         ref_count=$(find "$skill/references" -name "*.md" | wc -l)
         emit_ok "$ref_count reference files"
@@ -244,9 +358,12 @@ EOF
             fi
         done
 
-        for ref_mentioned in $(grep -oE 'references/[a-z0-9_-]+\.md' "$main" | sort -u); do
-            if [[ ! -f "$skill/$ref_mentioned" ]]; then
-                emit "RI001" "ERROR" "Main references $ref_mentioned but file doesn't exist"
+        # RI003: reference-to-reference nesting (keep references one level deep)
+        for ref in "$skill/references"/*.md; do
+            refname=$(basename "$ref")
+            nested=$(grep -oE 'references/[a-z0-9_-]+\.md' "$ref" 2>/dev/null | grep -v "references/$refname" | sort -u | head -3)
+            if [[ -n "$nested" ]]; then
+                emit "RI003" "SUGGESTION" "references/$refname links to other reference file(s) ($(echo $nested | tr '\n' ' ')) — keep references one level deep from SKILL.md"
             fi
         done
 
@@ -256,6 +373,14 @@ EOF
             : "${ref_rule_count:=0}"
             if [[ "$ref_rule_count" -gt 0 ]] && [[ "$ref_rule_count" -lt 3 ]]; then
                 emit "SS004" "SUGGESTION" "references/$refname has only $ref_rule_count rules — likely mis-clustered or needs merging"
+            fi
+            # SS007: long reference file without a heading list near the top
+            ref_lines=$(wc -l < "$ref")
+            if [[ "$ref_lines" -gt 100 ]]; then
+                heading_count=$(head -30 "$ref" | grep -cE '^\s*[-*] |^#{2,} ')
+                if [[ "$heading_count" -lt 3 ]]; then
+                    emit "SS007" "SUGGESTION" "references/$refname is $ref_lines lines with no TOC/heading list in the first 30 — add one so partial reads don't lose rules"
+                fi
             fi
         done
 
@@ -287,7 +412,7 @@ if len(parts) >= 3:
 EOF
 )
     if [[ -n "$broad_patterns" ]]; then
-        emit "TR001" "WARNING" "Recursive-wildcard filePattern(s): $(echo $broad_patterns | tr '|' ' ') — matches entire project"
+        emit "TR001" "WARNING" "Recursive-wildcard filePattern(s): $(printf '%s' "$broad_patterns" | tr '|' ' ') — matches entire project"
     fi
 
     # TR002: bashPattern too common
@@ -308,7 +433,7 @@ if len(parts) >= 3:
 EOF
 )
     if [[ -n "$common_bash" ]]; then
-        emit "TR002" "WARNING" "bashPattern(s) too common: $(echo $common_bash | tr '|' ' ') — fires on every shell; narrow to subcommands"
+        emit "TR002" "WARNING" "bashPattern(s) too common: $(printf '%s' "$common_bash" | tr '|' ' ') — fires on every shell; narrow to subcommands"
     fi
 
     # SC001-SC005: Security checks on bundled scripts
@@ -349,14 +474,15 @@ EOF
         fi
     fi
 
-    echo
+    txt ""
 done
 
 # ============================================================================
 # Cross-skill checks
 # ============================================================================
+current_skill="(cross-skill)"
 if [[ ${#SKILLS[@]} -gt 1 ]]; then
-    echo "=== Cross-skill checks ==="
+    txt "=== Cross-skill checks ==="
     overlap=$(python3 << EOF
 import yaml, os, sys
 skills = """$(printf '%s\n' "${SKILLS[@]}")"""
@@ -386,34 +512,57 @@ for i in range(len(skill_names)):
         if overlap_pats:
             pairs_with_overlap.append((a, b, overlap_pats))
 
-if pairs_with_overlap:
-    for a, b, o in pairs_with_overlap:
-        print(f"[WARNING  TR003] {a} vs {b}: shared filePattern(s) {sorted(o)}")
-else:
-    print("[ok] No identical filePattern overlaps between skills")
+for a, b, o in pairs_with_overlap:
+    print(f"{a} vs {b}: shared filePattern(s) {sorted(o)}")
 EOF
 )
-    echo "$overlap"
-    echo
+    if [[ -n "$overlap" ]]; then
+        while IFS= read -r line; do
+            [[ -n "$line" ]] && emit "TR003" "WARNING" "$line"
+        done <<< "$overlap"
+    else
+        emit_ok "TR003 No identical filePattern overlaps between skills"
+    fi
+    txt ""
 fi
 
 # ============================================================================
 # Summary
 # ============================================================================
-echo "=== Summary ==="
-echo "  Skills checked: ${#SKILLS[@]}"
-total=$((critical + errors + warnings + suggestions))
-if [[ $total -eq 0 ]]; then
-    echo "  ${GREEN}✓ All checks passed${NC}"
-    exit 0
+if [[ "$OUTPUT_FORMAT" == "json" ]]; then
+    python3 - "$FINDINGS_TMP" << 'EOF'
+import json, sys
+findings = []
+counts = {"critical": 0, "errors": 0, "warnings": 0, "suggestions": 0}
+key = {"critical": "critical", "error": "errors", "warning": "warnings", "suggestion": "suggestions"}
+with open(sys.argv[1]) as f:
+    for line in f:
+        line = line.rstrip("\n")
+        if not line:
+            continue
+        parts = line.split("\x1f", 3)
+        if len(parts) != 4:
+            continue
+        skill, rule_id, sev, msg = parts
+        findings.append({"skill": skill, "rule_id": rule_id, "severity": sev, "message": msg})
+        counts[key.get(sev, "suggestions")] += 1
+print(json.dumps({"findings": findings, "summary": counts}, indent=2))
+EOF
+else
+    echo "=== Summary ==="
+    echo "  Skills checked: ${#SKILLS[@]}"
+    total=$((critical + errors + warnings + suggestions))
+    if [[ $total -eq 0 ]]; then
+        echo "  ${GREEN}✓ All checks passed${NC}"
+        exit 0
+    fi
+    parts=""
+    [[ $critical    -gt 0 ]] && parts+=" ${RED}${critical} critical${NC}"
+    [[ $errors      -gt 0 ]] && parts+=" ${RED}${errors} error(s)${NC}"
+    [[ $warnings    -gt 0 ]] && parts+=" ${YELLOW}${warnings} warning(s)${NC}"
+    [[ $suggestions -gt 0 ]] && parts+=" ${BLUE}${suggestions} suggestion(s)${NC}"
+    echo " $parts"
 fi
-
-parts=""
-[[ $critical    -gt 0 ]] && parts+=" ${RED}${critical} critical${NC}"
-[[ $errors      -gt 0 ]] && parts+=" ${RED}${errors} error(s)${NC}"
-[[ $warnings    -gt 0 ]] && parts+=" ${YELLOW}${warnings} warning(s)${NC}"
-[[ $suggestions -gt 0 ]] && parts+=" ${BLUE}${suggestions} suggestion(s)${NC}"
-echo " $parts"
 
 if [[ $critical -gt 0 ]] || [[ $errors -gt 0 ]]; then
     exit 1

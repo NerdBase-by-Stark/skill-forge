@@ -6,7 +6,7 @@
 
 ## Consent before spending
 
-Before spawning any agents, print the research plan and get explicit user consent:
+Before spawning any agents: **print the research plan as text** (streams, foci, cost estimate, output paths, parallelism — like the example below), then **get consent via `AskUserQuestion`** — never a text "Proceed?" prompt (SKILL.md checkpoint protocol).
 
 ```
 Phase 5 will spawn search-specialist agents to produce verified-source research docs.
@@ -21,9 +21,26 @@ Proposed streams (5):
 Estimated cost: ~$3-5 in agent tokens.
 Output: <project>/docs/skill-research/0N-<topic>.md (5 files)
 Parallelism: batches of 3 (compliance cap).
-
-Proceed? [yes / fewer streams / custom streams / stop]
 ```
+
+```
+Question: "Run this research plan? (~$3-5)"
+Header:   "Phase 4 → 5"
+Options:
+  - Label: `Run all streams`
+    Description: Spawn the full plan above, batched 3 at a time
+  - Label: `Fewer streams`
+    Description: You pick which streams to keep; the rest are dropped
+  - Label: `Custom streams`
+    Description: You describe changes (add/replace topics); plan is revised and re-asked
+  - Label: `Stop`
+    Description: Skip research entirely; pipeline continues to Phase 7
+```
+
+Defined follow-ups (do not improvise):
+- **Fewer streams** → ask one follow-up `AskUserQuestion` listing each stream as an option (multi-select semantics via "keep/drop" labels, or numbered options in batches of 4); rebuild the plan from the kept set, print it, and re-ask this gate once.
+- **Custom streams** → take the user's free-text change request, revise the plan, print the revised plan, and re-ask this gate once. If it still isn't right, iterate — but each iteration re-asks; never spawn on an unconfirmed plan.
+- **Empty/missing answer** → STOP per SKILL.md's empty-answer rule. Never spawn agents on inferred consent.
 
 Never proceed without consent.
 
@@ -95,7 +112,7 @@ See `references/research-agent-brief.md` for the fill-in-the-blank template. Eve
 4. Verification requirements (authoritative sources required; mark `UNVERIFIED` otherwise)
 5. Output format (our standard markdown structure with Gems, Rules, Anti-Patterns, Sources)
 6. Output file path (`<project>/docs/skill-research/0N-<slug>.md`)
-7. Length cap (typically 500-700 lines)
+7. Length cap (700 lines maximum — `validate-research.sh` enforces it)
 
 ## Pre-spawn git state snapshot (MANDATORY)
 
@@ -110,11 +127,8 @@ mkdir -p .skill-forge
   echo "### HEAD"
   git rev-parse HEAD
   echo
-  echo "### local branches"
-  git branch --format '%(refname:short)'
-  echo
-  echo "### remote branches"
-  git branch -r --format '%(refname:short)'
+  echo "### all refs with SHAs (branch-head moves are only detectable if SHAs are recorded)"
+  git for-each-ref --format '%(refname) %(objectname)' refs/heads refs/remotes
   echo
   echo "### open PRs authored by @me"
   gh pr list --author @me --state open --json number,headRefName,title --jq '.[]' 2>/dev/null || echo "(gh not available or no auth)"
@@ -137,7 +151,18 @@ STOP and record the recommendation in your research doc under an
 "Escalations" heading. The supervisor will decide, not you.
 ```
 
-Before calling the Agent tool, assert the prompt string contains the phrase `STRICT SCOPE — OUTPUT IS FILE-WRITE ONLY.` verbatim. If missing, abort spawn and fix the prompt.
+**The check is a command, not a mental note.** Write every filled brief to disk before spawning, then gate on grep:
+
+```bash
+mkdir -p .skill-forge/briefs
+# ... write the filled brief to .skill-forge/briefs/stream-N.md ...
+grep -qF 'STRICT SCOPE — OUTPUT IS FILE-WRITE ONLY.' .skill-forge/briefs/stream-N.md \
+  || { echo "ABORT spawn: scope clause missing from stream-N brief"; }
+```
+
+The Agent prompt is then the brief file's content, so the checked artifact and the spawned prompt cannot diverge. Persisted briefs also make post-hoc audit of what each agent was told possible.
+
+**Tools allowlist is mandatory on every spawn** (not just under permissive modes — you often can't verify the mode): pass an explicit read-and-research allowlist per `research-agent-brief.md §Permission-mode safety rail` (e.g. `Read, Grep, Glob, WebSearch, WebFetch, Write`). The allowlist is enforced by the harness; the scope clause is enforced by nothing.
 
 ## Spawning discipline
 
@@ -156,20 +181,28 @@ The main Claude context shouldn't sit idle. Use the time for:
 
 But don't spawn more agents, edit active skills, or do anything that might conflict.
 
+**Hang handling:** research agents normally finish in 10-20 minutes. If an agent has been running more than 40 minutes (2× the upper expectation) with no output file, treat it as hung: mark the stream failed in the run log, do not wait further, and decide replacement per the cap below. Never let one hung agent stall the phase indefinitely.
+
 ## On agent completion
 
 For each completed agent:
 1. Verify the file was written at the expected path
-2. Quick-read the "Research Summary" section — did it cover the right scope?
-3. If summary indicates a wrong turn or low-quality output, spawn a REPLACEMENT agent with a tighter brief (document in log)
-4. If summary looks good, proceed
+2. **Run the deterministic validator — rejection is an exit code, not a vibe:**
+   ```bash
+   bash ~/.claude/skills/skill-forge/scripts/validate-research.sh docs/skill-research/0N-<slug>.md
+   ```
+   Non-zero exit = the doc fails the acceptance criteria below → automatic reject.
+3. Quick-read the "Research Summary" section — did it cover the right scope? (The validator can't judge scope.)
+4. Rejected or off-scope → spawn a REPLACEMENT agent with a tighter brief (document in log). **Hard cap: one replacement per stream.** If the replacement also fails, drop the stream, record it as a coverage gap for §5.5, and move on — no unbounded retry loops.
+5. Validator passed and scope is right → proceed
 
-## Reject agent output if
+## Reject agent output if (what the validator enforces)
 
 - The "Sources" section is missing or has <3 distinct domains
 - Verified Gems count is < 3 (not enough signal)
 - Most claims are marked `UNVERIFIED` (agent went off-mission)
-- The doc mentions libraries or versions that don't exist (fabrication — check by curl-ing the PyPI/GitHub URL)
+- Over the length cap
+- The doc mentions libraries or versions that don't exist (fabrication — check by curl-ing the PyPI/GitHub URL; this one stays manual)
 
 Replacement agents don't cost 3× — they usually resolve in 1 retry because the first agent mapped the space.
 
@@ -183,11 +216,8 @@ cd <project_root>
   echo "### HEAD"
   git rev-parse HEAD
   echo
-  echo "### local branches"
-  git branch --format '%(refname:short)'
-  echo
-  echo "### remote branches"
-  git branch -r --format '%(refname:short)'
+  echo "### all refs with SHAs (branch-head moves are only detectable if SHAs are recorded)"
+  git for-each-ref --format '%(refname) %(objectname)' refs/heads refs/remotes
   echo
   echo "### open PRs authored by @me"
   gh pr list --author @me --state open --json number,headRefName,title --jq '.[]' 2>/dev/null || echo "(gh not available or no auth)"
@@ -196,36 +226,56 @@ cd <project_root>
 diff -u .skill-forge/git-snapshot-pre-phase5.txt .skill-forge/git-snapshot-post-phase5.txt > .skill-forge/git-snapshot-diff.txt || true
 ```
 
-**Trigger conditions for an anomaly:**
+**Trigger conditions for an anomaly** (all derivable from the ref+SHA snapshot):
 - HEAD moved (a commit landed on the checked-out branch)
-- New local branch appeared
-- New remote branch appeared
+- New local or remote ref appeared
 - New open PR by `@me` appeared
-- Any pre-existing branch's head moved (new commit pushed)
+- Any pre-existing ref's SHA changed (new commit pushed to an existing branch)
 
-If any condition matches, **do not advance to Phase 6**. Call `AskUserQuestion`:
+If any condition matches, **do not advance to Phase 6**. First classify the anomaly, then ask the question that matches it:
+
+**Case A — new branches and/or PRs appeared** (with or without a HEAD move). Call `AskUserQuestion`:
 
 ```
 Question: "Research agent(s) modified git/PR state — review?"
-Header:   "Phase 5 — unauthorized activity"
+Header:   "Rogue check"
 Options:
   - Label: `Show the diff`
-    Description: Print the pre/post snapshot diff so you can see what happened
-  - Label: `Close & delete (recommended)`
-    Description: Close any new PRs, delete any new branches (local + remote), reset HEAD if moved
+    Description: Print the pre/post snapshot diff, then re-ask this question
+  - Label: `Close & delete`
+    Description: Recommended. Close new PRs, delete new branches (local + remote). If HEAD also moved, a follow-up question handles that separately
   - Label: `Keep`
     Description: Leave the new branches/PRs in place; note in run-log; continue to Phase 6
-  - Label: `Investigate before continuing`
-    Description: Pause pipeline; user inspects manually before deciding
+  - Label: `Investigate`
+    Description: Pause pipeline; you inspect manually before deciding
 ```
 
 On **Close & delete**, for each new branch / PR:
 - `gh pr close <N> --comment "Closed — opened by skill-forge research sub-agent outside scope." --delete-branch`
 - `git branch -D <local-branch>` (if exists locally)
 - `git push origin --delete <remote-branch>` (if `--delete-branch` didn't already)
-- If HEAD moved on the working branch, show the offending commit(s) and ask: `[revert / reset / keep]` — never auto-reset.
+
+**Case B — HEAD (or a pre-existing branch's SHA) moved** — whether alone or after Case A cleanup. This always gets its own question; the Case A options do not cover it:
+
+```
+Question: "Commit(s) landed on <branch> during research — what now?"
+Header:   "HEAD moved"
+Options:
+  - Label: `Show commits`
+    Description: git log <old-sha>..<new-sha> --stat, then re-ask
+  - Label: `Revert`
+    Description: git revert the offending commit(s) — history preserved
+  - Label: `Reset`
+    Description: git reset --hard <old-sha> — history rewritten; only for unpushed commits
+  - Label: `Keep`
+    Description: Accept the commits; note in run-log; continue
+```
+
+Never auto-revert or auto-reset.
 
 Log the anomaly and the chosen resolution to `.skill-forge/rogue-agent-log.md` regardless of choice.
+
+**This check also applies to every later sub-agent spawn:** §5.5 catch-up research streams and the Phase 6 critique agent run in background too — snapshot before, check after, same procedure (see `phase-6-second-pass.md`).
 
 **Why this check exists:** `run_in_background: true` makes sub-agent tool calls invisible to the supervisor until completion. Without this diff, a sub-agent that ignored the scope clause (or was mis-briefed) can silently commit, push, or open PRs — discovered only at Phase 9 write-up. This check catches it before Phase 6 compounds the blast radius.
 

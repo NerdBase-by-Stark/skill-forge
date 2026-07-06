@@ -23,7 +23,7 @@ Thanks for thinking about contributing. Here's how to propose changes, what I'm 
 
 Follow the conventions documented in `skill-forge/SKILL.md` itself:
 
-- Progressive disclosure for any skill > 2k tokens
+- Progressive disclosure for any skill > 500 lines (the audit.sh SS001 metric)
 - Description ≤ 300 characters
 - Every rule cites a source URL or an explicit project-memory reference
 - filePattern narrow enough it doesn't trigger on unrelated files
@@ -42,19 +42,19 @@ Scope is one of: `phase-N`, `audit`, `install`, `readme`, `docs`, `command`, `sk
 
 ### PR checklist
 
-- [ ] Ran `bash skill-forge/scripts/audit.sh skill-forge/` and got 0 errors
+- [ ] Ran `bash skill-forge/scripts/audit.sh skill-forge/` from the repo root and it exited 0 (no CRITICAL/ERROR findings; warnings and suggestions are informational)
 - [ ] Updated `CHANGELOG.md` under `## [Unreleased]`
-- [ ] Touched at most one phase reference file per PR (easier review)
+- [ ] Kept the PR to one logical change (prefer few phase reference files per PR; a coordinated change that spans several is fine when it is genuinely one change)
 - [ ] If you added a new workflow pattern, updated or added example coverage in `example-skills/`
 
 ## Running the audit locally
 
 ```bash
-cd skill-forge
+# from the repo root
 bash skill-forge/scripts/audit.sh skill-forge/
 ```
 
-Should print all green checks. If it doesn't after your changes, that's a real issue — please fix before PR.
+Should exit 0 (no CRITICAL/ERROR findings — check with `echo $?`). Warnings/suggestions are informational. If it exits 1 after your changes, that's a real issue — please fix before PR.
 
 ## Local development loop
 

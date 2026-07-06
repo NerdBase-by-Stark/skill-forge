@@ -2,7 +2,7 @@
 
 **Goal:** Apply progressive disclosure to any oversized skill; tighten filePatterns; deduplicate cross-skill content.
 
-**Depends on:** Phase 6 edits (skills now contain their final content).
+**Depends on:** Phase 6 edits (skills now contain their final content) + **the Phase 6→7 write gate** (SKILL.md gate #5). Everything this phase does is a write to `~/.claude/skills/` — `.skill-forge/consent-phase7.ok` must exist before any mkdir/Write/Edit here. If the user declined the gate (or there was nothing to ask about but refactor targets emerged anyway), write the refactor PLAN into the run report instead and touch nothing.
 
 ## When to refactor a skill
 
@@ -107,7 +107,7 @@ If any answer is "no", regroup before continuing.
 ## Bad-refactor anti-patterns
 
 - **Dump file** — `misc.md`, `other.md`, `everything-else.md`. Means clustering failed; redo.
-- **Micro-references** — 15 files each with 2-3 rules. Defeats the purpose; harder to navigate than a monolith. Merge related ones until each has ≥ 5 rules or a cohesive single-topic scope.
+- **Micro-references** — 15 files each with 1-2 rules. Defeats the purpose; harder to navigate than a monolith. Merge related ones until each has ≥ 3 rules (the bar `audit.sh` SS004 enforces) or a cohesive single-topic scope; aim higher when topics allow.
 - **Too-large main** — inlined 20+ rules "to be comprehensive". That's just the monolith you started with. Cut it down.
 - **Rule-range names** — `rules-1-to-8.md`. Topics, not numbers. If you can't describe the file by topic, the cluster is wrong.
 - **Renumbered rules** — breaks every cross-reference in the skill, in user project memory, in git history. Keep the numbers exactly as they were.
@@ -126,7 +126,7 @@ After Phase 6 may have added cross-project scope hints, re-verify patterns:
 
 Document this in any skill that mentions filePattern so users don't assume bash-glob semantics.
 
-**Source:** Anthropic docs + GitHub Issue #26338 (gitignore-style matching confirmed for 2026).
+**Source:** Anthropic skill authoring docs (platform.claude.com/docs/en/agents-and-tools/agent-skills). (A previous revision also cited GitHub Issue #26338 here — removed 2026-07-06: that issue is about a `Glob` tool bug, not filePattern semantics.)
 
 ### Too-broad filePatterns to avoid
 
@@ -197,7 +197,7 @@ Write to `<project>/.skill-forge/structure-changes.md`:
 
 ## Checkpoint — call `AskUserQuestion`
 
-Print the phase summary as text (5-10 lines — what was done, counts, notable findings). Keep it short. Then **call `AskUserQuestion`** (never a text prompt — users skim and miss them):
+Print the phase summary as text (5-10 lines — what was done, counts, notable findings). Keep it short. Then — **in interactive mode** — call `AskUserQuestion` as below; in autopilot this is an auto-advance transition (Phase 8's writes are covered by the same 6→7 consent), so print the summary and continue to Phase 8:
 
 ```
 Question: "Structure cleaned — run QA?"

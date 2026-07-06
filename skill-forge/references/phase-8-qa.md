@@ -2,12 +2,15 @@
 
 **Goal:** Automated audit of every skill touched in this run. Prevent shipping broken frontmatter or missing reference files.
 
-**Depends on:** Phases 4, 6, 7 (whatever edits were made).
+**Depends on:** Phases 4, 6, 7 (whatever edits were made). **Write consent:** any fix this phase applies is a write to `~/.claude/skills/` — it is covered by the Phase 6→7 gate approval (`.skill-forge/consent-phase7.ok` must exist). If the user declined that gate, apply NO fixes: record every issue in the QA report instead. Delete the marker when this phase ends.
 
 ## Run the audit script
 
 ```bash
-bash ~/.claude/skills/skill-forge/scripts/audit.sh <skill-path> [<skill-path> ...]
+AUDIT=~/.claude/skills/skill-forge/scripts/audit.sh
+[ -f "$AUDIT" ] || AUDIT=<project>/.claude/skills/skill-forge/scripts/audit.sh
+bash "$AUDIT" <skill-path> [<skill-path> ...]
+bash "$AUDIT" --format json <skill-path> [...] > .skill-forge/qa-findings.json   # machine-readable copy for the report
 ```
 
 The script checks each skill for:
@@ -19,7 +22,7 @@ The script checks each skill for:
 5. **Rule coverage** — no duplicates across reference files (progressive disclosure — rule in main + one reference — is allowed)
 6. **References exist** — every `references/X.md` mentioned in main SKILL.md is a real file
 7. **No orphan references** — every file in `references/` is mentioned at least once in main SKILL.md
-8. **Main SKILL.md size** — warn if > 2,500 tokens
+8. **Main SKILL.md size** — warn if > 500 lines (SS001 — the one split metric)
 9. **Cross-skill filePattern overlap** — detect identical glob patterns in multiple skills (prints as matrix)
 10. **Split-quality warnings (catches bad refactors):**
     - Reference with < 3 numbered rules → likely mis-clustered; consider merging with a related topic
@@ -46,21 +49,23 @@ After the script runs clean, spot-check:
 - Grep each edited skill for `(accessed YYYY-MM-DD)` — source citations should be present
 - Grep for `UNVERIFIED` — if any leaked into committed skills, that's a bug (they should live in research docs only)
 
-### 8.4 Verify filePattern targets actually exist in SOME real project
-Not the target project necessarily. If a skill's filePattern matches zero files anywhere on the user's machine, the skill will never auto-trigger:
+### 8.4 Verify filePattern targets actually exist (edited skills only)
+Scope: only the skills edited THIS run — Phase 8 is per-run QA, not a machine-wide audit. If an edited skill's filePattern matches zero files anywhere on the user's machine, the skill will never auto-trigger:
 
 ```bash
-for pattern in <filePatterns>; do
+for pattern in <filePatterns of edited skills>; do
   echo "$pattern:"
   find ~ -path ~/.claude -prune -o -type f -name "$pattern" -print 2>/dev/null | head -3
 done
 ```
 
-### 8.5 YAML-lint every SKILL.md
-Fast catch of subtle issues (tab indentation, missing colons):
+**Follow-up action if a pattern matches nothing:** if the pattern was changed this run (Phase 4/6/7 edit), that edit is wrong — fix it now (it's in scope and consented). If the pattern was pre-existing, record it in the QA report as a "Defect: trigger" candidate for the next run's Phase 2 — do not widen scope by editing an untouched skill.
+
+### 8.5 YAML-lint the edited skills
+Fast catch of subtle issues (tab indentation, missing colons) — again scoped to skills edited this run:
 
 ```bash
-for f in ~/.claude/skills/*/SKILL.md; do
+for f in <edited-skill-paths>/SKILL.md; do
   python3 -c "
 import yaml
 with open('$f') as h:
@@ -80,7 +85,11 @@ done
 For each QA issue:
 - **Trivial fixes** (typo in description, missing source date): fix immediately, re-run script
 - **Structural issues** (rule numbering collision, orphan reference): fix in this phase
-- **Non-fatal warnings** (skill size 2,100 tokens — slightly over target): note in report but don't force refactor in this session
+- **Non-fatal warnings** (skill 520 lines — slightly over target): note in report but don't force refactor in this session
+
+**Retry cap:** if a CRITICAL/ERROR finding survives **two** fix attempts, stop fixing it. Mark it `BLOCKED` in the QA report with what was tried, and surface it in the Phase 9 terminal summary for the user. Do not loop; do not ship a third guess.
+
+**Definition of "QA passed" (exit-code, not vibes):** the final `audit.sh` run on the edited skills exits 0 (no CRITICAL/ERROR findings). Exit 1 with only BLOCKED items = "QA completed with blocked items" — say that, never "passed".
 
 ## Produce the QA report
 
@@ -108,10 +117,10 @@ Write to `<project>/.skill-forge/qa-report.md`:
 
 ## Checkpoint — call `AskUserQuestion`
 
-Print the phase summary as text (5-10 lines — what was done, counts, notable findings). Keep it short. Then **call `AskUserQuestion`** (never a text prompt — users skim and miss them):
+Print the phase summary as text (5-10 lines — what was done, counts, notable findings; state "QA passed" only on audit.sh exit 0). Keep it short. Then — **in interactive mode** — call `AskUserQuestion` as below; in autopilot this is an auto-advance transition (SKILL.md mode table), so print the summary and continue to Phase 9:
 
 ```
-Question: "QA passed — persist to memory?"
+Question: "QA done — persist to memory?"
 Header:   "Phase 8 → 9"
 Options:
   - Label: `Save to memory`

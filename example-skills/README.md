@@ -4,7 +4,7 @@ Real skills produced by running `/skill-forge` on a production project — a Pyt
 
 **These aren't installed by `install.sh`.** They're reference material — worked examples of what Phase 6 output looks like in practice.
 
-## The five skills
+## The four skills
 
 | Skill | Archetype | What's noteworthy |
 |---|---|---|
@@ -12,7 +12,6 @@ Real skills produced by running `/skill-forge` on a production project — a Pyt
 | [`network-device-discovery/`](network-device-discovery/) | **Deep domain knowledge** | 47 rules including a Section 9 "Vendor UDP Broadcast Protocols" produced via reverse-engineering of a vendor's closed-source binary. Kept monolithic because content is genuinely cohesive. |
 | [`windows-release-pipeline/`](windows-release-pipeline/) | **CI/CD workflow skill** | Complete reference GitHub Actions YAML + 10 rules on Azure Trusted Signing, Release Drafter, artifact verification. |
 | [`mass-deploy-ux/`](mass-deploy-ux/) | **UX pattern library** | 10 patterns with PySide6 implementation hints, distilled from Ansible Tower, Buildkite, Jenkins Blue Ocean, Kubernetes Lens, Microsoft Intune. |
-| [`python-packaging/`](python-packaging/) | **Scope-bounded skill** | Demonstrates the anti-bloat pattern: explicit "this is PyPI only, NOT for desktop apps — see X" scope delimiter. |
 
 ## What to do with these
 

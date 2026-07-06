@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "skill-forge profile.json",
+  "description": "Phase 1 output consumed by every later phase. Missing optional fields are fine; wrong types are not.",
+  "type": "object",
+  "required": ["profile_schema_version", "project_root", "project_name", "languages", "tech_stack_tags", "relevant_skills"],
+  "properties": {
+    "profile_schema_version": { "type": "integer", "minimum": 1 },
+    "project_root": { "type": "string", "minLength": 1 },
+    "project_name": { "type": "string", "minLength": 1 },
+    "languages": { "type": "array", "items": { "type": "string" } },
+    "frameworks": { "type": "array", "items": { "type": "string" } },
+    "tech_stack_tags": { "type": "array", "items": { "type": "string" } },
+    "relevant_skills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "match_reason"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "match_reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "project_local_skills": { "type": "array" },
+    "active_hooks": { "type": "array" },
+    "available_mcp_servers": { "type": "array", "items": { "type": "string" } },
+    "local_knowledge_bases": { "type": "array" },
+    "sub_projects": { "type": "array" },
+    "memory_files": { "type": "array" },
+    "usage_telemetry": {
+      "type": ["object", "null"],
+      "properties": {
+        "path": { "type": "string" },
+        "scanned_at": { "type": "string" },
+        "skills_evaluated": { "type": "integer" },
+        "days_stale": { "type": "number" }
+      }
+    },
+    "profile_completeness": {
+      "type": "object",
+      "properties": {
+        "verified": { "type": "boolean" },
+        "dispatch": { "type": "string" },
+        "heavy_api_surface": { "type": "array" },
+        "new_tags_added": { "type": "array" }
+      }
+    },
+    "last_run": {},
+    "prior_research_count": { "type": "integer" }
+  }
+}

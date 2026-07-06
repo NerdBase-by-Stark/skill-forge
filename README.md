@@ -22,16 +22,16 @@ Deep Research → Second-Pass Edits → Structure → QA → Memory
 | Phase | What happens |
 |---|---|
 | 1. **Discover** | Profiles the project — reads `CLAUDE.md`, inventories existing skills, detects tech stack, loads project memory |
-| 2. **Audit** | Runs `scripts/audit.sh` — checks size, filePattern overlap, description quality, rule coverage, stale content |
+| 2. **Audit** | Runs `scripts/audit.sh` — checks size, filePattern overlap, description quality, rule coverage, stale content; machine-readable `--format json` output available |
 | 3. **Find Candidates** | `npx skills find` with stack-aware queries; **clones candidates for review — never auto-installs** |
 | 4. **First-Pass Edits** | Applies high-confidence clear wins (description tightening, filePattern narrowing, broken links). Backs up `~/.claude/skills/` first. |
 | 5. **Deep Research** | Spawns 5-8 parallel research agents (batched 3 at a time), using whatever web-research tools you have installed — firecrawl MCP, built-in WebSearch/WebFetch, Tavily, Perplexity, etc. Each produces a verified-source markdown doc. **Cost-gated — explicit consent required before any agent spawns.** |
 | 6. **Second-Pass Edits** | Extracts verified gems into existing skills; creates new skills where warranted; logs rejections with reasons |
-| 7. **Structure** | Progressive-disclosure refactor for any skill > 2k tokens (main SKILL.md + `references/*.md`). Tightens patterns. |
-| 8. **QA** | Automated: YAML validity, rule coverage, description length, filePattern overlap, orphan references, broken cross-refs |
+| 7. **Structure** | Progressive-disclosure refactor for any skill > 500 lines (main SKILL.md + `references/*.md`). Tightens patterns. |
+| 8. **QA** | Automated: YAML validity, rule coverage, description length, filePattern overlap, orphan references, broken cross-refs — machine-readable via `--format json` |
 | 9. **Memory** | Persists architectural decisions, feedback, and the new skill inventory to project memory |
 
-Every phase ends with a one-screen summary and a clickable dialog (Continue / Skip / Explain more / Stop) — not a text prompt you might miss while skimming. Run `--phase=audit` or `--from-phase=5` to enter mid-pipeline.
+Every phase ends with a one-screen summary. In autopilot (the default), the pipeline auto-advances between non-write phases and stops at five mandatory consent/cost gates (first-pass approval, research cost, rogue-agent check, second-pass approval, structure/QA writes). With `--interactive`, you get a clickable dialog (Continue / Skip / Explain more / Stop) after every phase — not a text prompt you might miss while skimming. Run `--phase=audit` or `--from-phase=5` to enter mid-pipeline.
 
 ---
 
@@ -59,7 +59,7 @@ In Claude Code, run:
 /skill-forge --phase=audit
 ```
 
-You should see an audit report printed for the current project's skills (or a message that no relevant skills were found, which is also fine). If it works, you're set.
+You should see an audit report printed for the current project's skills (or a message that no relevant skills were found, which is also fine). If it works, you're set. You can also verify the install directly with `bash ~/.claude/skills/skill-forge/scripts/audit.sh --self`, and detect drift between the repo and your installed copy with `./install.sh --check`.
 
 ---
 
@@ -71,12 +71,15 @@ You should see an audit report printed for the current project's skills (or a me
 /skill-forge --phase=audit           # run a single phase (Phase 2 only)
 /skill-forge --from-phase=6          # resume from phase 6 (uses existing research)
 /skill-forge --skip-research         # cheap maintenance pass (skip expensive phase 5)
+/skill-forge --interactive           # checkpoint dialog after every phase — recommended for first-time users
 ```
 
 ### Example session
 
+The transcript below shows `--interactive` mode, where a dialog follows every phase (autopilot only stops at the five consent/cost gates):
+
 ```
-> /skill-forge
+> /skill-forge --interactive
 PHASE 1 — DISCOVER
   Project: my-webapp (TypeScript / Next.js / Supabase)
   Relevant skills: 3 (supabase-migration-workflow, vercel-react-best-practices, n8n-workflow-patterns)
@@ -104,9 +107,9 @@ PHASE 2 — AUDIT
 ## Why it's different from running the steps manually
 
 - **Verification discipline baked in** — every added rule must have a source URL; agents are rejected for unverified claims
-- **Progressive disclosure default** — any skill > 2k tokens gets auto-refactored into main + references/
+- **Progressive disclosure default** — any skill > 500 lines gets auto-refactored into main + references/
 - **Third-party skills never auto-installed** — Phase 3 clones for review only; you pick what to keep
-- **Parallelism capped at 3 agents** — stays under Anthropic's compliance-alert thresholds
+- **Parallelism capped at 3 agents** — deliberate safety margin under the ~10-concurrent warning threshold
 - **Backups before edits** — Phase 4 creates a tarball snapshot of `~/.claude/skills/` before touching anything
 - **Idempotent** — re-running preserves research docs, detects prior runs, skips redundant work
 - **Memory persists** — Phase 9 writes architectural decisions into project memory so the next session starts with context
@@ -123,7 +126,6 @@ Have a look at [`example-skills/`](example-skills/) — these are real skills pr
 | [`network-device-discovery`](example-skills/network-device-discovery/) | **Deep domain knowledge** — 47 rules from production deployment + vendor protocol reverse-engineering |
 | [`windows-release-pipeline`](example-skills/windows-release-pipeline/) | **CI/CD workflow skill** — actionable GitHub Actions YAML + 10 rules |
 | [`mass-deploy-ux`](example-skills/mass-deploy-ux/) | **UX pattern library** — 10 patterns distilled from professional tools (Ansible Tower, Buildkite, Lens) |
-| [`python-packaging`](example-skills/python-packaging/) | **Scope-bounded skill** — explicit "this is PyPI only, for exe bundling see X" |
 
 ### Example research output
 
@@ -145,10 +147,10 @@ These doubled as source-of-truth citations for the example skills above.
 ## Design principles
 
 1. **No fabrication** — every rule cites a source
-2. **Progressive disclosure default** — keep SKILL.md under 2k tokens
+2. **Progressive disclosure default** — split any SKILL.md over 500 lines (audit.sh enforces)
 3. **Never auto-install third-party skills** — review-then-extract only
-4. **Cap parallelism at 3 agents** — stay under compliance thresholds
-5. **Checkpoint after every phase** — human-in-the-loop, always
+4. **Cap parallelism at 3 agents** — deliberate safety margin under the ~10-concurrent warning threshold (see docs/skill-research/03-subagent-orchestration.md)
+5. **Consent-gate every write** — autopilot (default) auto-advances between non-write phases but always stops at the five mandatory consent/cost gates; `--interactive` checkpoints after every phase
 6. **Idempotent** — safe to re-run
 7. **Target one project at a time** — "all my projects" is an anti-pattern
 
@@ -167,11 +169,8 @@ A: ~$0.50-1.00 per research agent × 5-8 streams ≈ $3-8 total per full run. Ph
 **Q: Can I use it on projects that already have `.claude/commands/` / `.claude/skills/`?**
 A: Yes. The audit handles per-project skills as well as user-level `~/.claude/skills/`.
 
-**Q: What if I don't want the Phase 4 backup tarball?**
-A: Use `--no-backup` (not recommended; the backup is 20 MB max and has saved skin).
-
 **Q: Is this safe to run against skills I didn't write?**
-A: The tool never auto-installs or auto-deletes. Every edit is applied with a backup. Phase 6 asks for confirmation on new-skill creation. Read Phase 4's change log before Phase 5 kicks off if you're nervous.
+A: The tool never auto-installs or auto-deletes. Every edit is applied with a backup. Phase 6's approval gate asks for confirmation on every change — edits to existing skills and new-skill creation alike. Read Phase 4's change log before Phase 5 kicks off if you're nervous.
 
 ---
 
@@ -188,7 +187,7 @@ PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Particularly wanted:
 
 ## Project status
 
-Version **0.1.0** — first public release. Built and dogfooded on a real production skill library before shipping.
+Version **0.3.0** — post-audit hardening release: a 430-agent adversarial audit (87 confirmed findings) plus a 32-gap analysis drove consent-gate, audit-rule, and installer fixes across the pipeline. Built and dogfooded on real production skill libraries.
 
 Known limitations:
 

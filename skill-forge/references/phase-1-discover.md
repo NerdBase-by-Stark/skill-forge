@@ -8,9 +8,10 @@
 
 ### 1.1 Identify the target project
 
-- If `/skill-forge` was invoked with `--project=<path>`, use that path
+- If `/skill-forge` was invoked with a project path argument (`/skill-forge <path>`), use that path
 - Otherwise use the current working directory
 - Verify the directory exists and looks like a project (has `.git/`, a top-level `CLAUDE.md`/`README.md`, or a manifest file)
+- **If validation fails** (path missing, or none of the project markers present): STOP. Report exactly what was checked and what was absent, then `AskUserQuestion` for a corrected path or explicit confirmation to proceed anyway. Never silently substitute a parent/sibling directory.
 - **Monorepo / sparse root:** if the root has no top-level manifest but `.git/` exists and depth-1 sub-directories each have their own manifests (`package.json`, `pyproject.toml`, `CLAUDE.md`, etc.), profile the whole monorepo — populate `sub_projects[]` (§1.7) so Phase 5 stream planning knows each stack. Do not ask the user which sub-project to target; skill-forge can handle heterogeneous stacks in one pass.
 
 ### 1.2 Read project signals
@@ -52,9 +53,24 @@ Skills are not the whole story. A Claude Code environment usually includes:
 - **MCP servers** — declared in `~/.claude.json` and `<project>/.mcp.json`. A local code-index MCP (e.g., `jcodemunch`) that already indexes the target repo can answer Phase 5 research questions much faster and cheaper than web search. The Phase 5 research-agent brief pulls from this list.
 - **Local knowledge bases** — Neo4j/Qdrant/plain-docs directories (often under `~/ai/`) that feed KB-search hooks or MCPs. If the user's environment has already ingested the domain knowledge, Phase 5 should use it rather than re-research from the web.
 
-**SECURITY — HARD CONSTRAINT.** `~/.claude/settings.json` and `~/.claude.json` contain API tokens (`GITHUB_PERSONAL_ACCESS_TOKEN`, `N8N_API_KEY`, MCP connection strings, etc.). **Do not Read these files in full.** Use `jq` to extract only the structural fields you need (hook events + matchers + command strings; MCP server *names* only) and never dump values that could be secret. If unsure whether a field is safe, don't include it.
+**SECURITY — HARD CONSTRAINT.** `~/.claude/settings.json` and `~/.claude.json` contain API tokens (`GITHUB_PERSONAL_ACCESS_TOKEN`, `N8N_API_KEY`, MCP connection strings, etc.). **Do not Read these files in full.** Use `jq` to extract only the structural fields you need (hook events + matchers + command strings; MCP server *names* only) and never dump values that could be secret. If unsure whether a field is safe, don't include it. This constraint also binds every sub-agent this pipeline spawns — it is embedded in `research-agent-brief.md`.
+
+**If `jq` is missing** (check with `command -v jq`), use the python3 fallback — same field discipline:
+```bash
+python3 -c "import json;d=json.load(open('$HOME/.claude/settings.json'));print(json.dumps(d.get('hooks',{})))"
+python3 -c "import json;d=json.load(open('$HOME/.claude.json'));print(list(d.get('mcpServers',{}).keys()))"
+```
 
 Record what you find under `active_hooks[]`, `available_mcp_servers[]`, and `local_knowledge_bases[]` in the profile. If any of these are empty for this environment, the fields are empty — that's fine.
+
+### 1.4b Inventory empirical usage data (telemetry)
+
+If skill-usage telemetry exists on this machine, it beats model judgment for audit verdicts — inventory it now so Phase 2 can consume it instead of re-judging:
+
+- Check known artifact paths: `~/audit-skill-telemetry.json` (per-skill compliance against the 8 Anthropic criteria + invocation estimates) and `~/audit-synthesis.json` (key `skill_compliance`); plus any path the project's CLAUDE.md/memory names.
+- Validate before trusting: `jq -e '.by_skill and .totals' <file>` (or the documented key set for that artifact). A file that fails validation is recorded as absent.
+- Record into the profile as `usage_telemetry`: `{path, scanned_at, skills_evaluated, days_stale}`. If the newest artifact is **more than 60 days stale**, set `usage_telemetry: null` and note why — stale usage data misleads worse than none.
+- No telemetry is a normal state: `usage_telemetry: null`, move on.
 
 ### 1.5 Check for prior runs and read project memory
 
@@ -80,6 +96,7 @@ Write to `<project>/.skill-forge/profile.json`. Target schema (agent fills what 
 
 ```json
 {
+  "profile_schema_version": 1,
   "project_root": "/home/alice/code/my-webapp",
   "project_name": "my-webapp",
   "languages": ["typescript", "python"],
@@ -99,6 +116,7 @@ Write to `<project>/.skill-forge/profile.json`. Target schema (agent fills what 
   ],
   "sub_projects": [],
   "memory_files": [],
+  "usage_telemetry": null,
   "profile_completeness": {
     "verified": true,
     "dispatch": "lua-qsys",
@@ -112,9 +130,23 @@ Write to `<project>/.skill-forge/profile.json`. Target schema (agent fills what 
 
 Profile is the agent's honest snapshot of what's here — not every field will be populated on every project. Missing fields are missing; don't invent data.
 
+**Validate before the checkpoint (mandatory):**
+
+```bash
+bash ~/.claude/skills/skill-forge/scripts/validate-profile.sh <project>/.skill-forge/profile.json
+```
+
+Non-zero exit = fix the reported fields and re-validate before proceeding. Also run this on every `--from-phase=N` / `--profile=<path>` re-entry — "looks stale" is not a check; the script is.
+
+**Gitignore the state dir (first write to `.skill-forge/`):**
+
+```bash
+cd <project> && grep -qxF '.skill-forge/' .gitignore 2>/dev/null || echo '.skill-forge/' >> .gitignore
+```
+
 ## Checkpoint — call `AskUserQuestion`
 
-Print the phase summary as text (5-10 lines — what was done, counts, notable findings). Keep it short. Then **call `AskUserQuestion`**:
+Print the phase summary as text (5-10 lines — what was done, counts, notable findings). Keep it short. Then — **in interactive mode** — call `AskUserQuestion` as below; in autopilot this is an auto-advance transition (SKILL.md mode table), so print the summary and continue to Phase 2:
 
 ```
 Question: "Discovery complete — next step?"

@@ -26,7 +26,7 @@ This is enforced at the Claude Code layer (not just in the prompt), so a comprom
 
 ## Prompt template (copy then fill)
 
-> **Every filled brief MUST contain the Strict Scope block verbatim.** Phase 5's pre-spawn assertion grep's for the literal phrase `STRICT SCOPE — OUTPUT IS FILE-WRITE ONLY.`; spawn aborts if missing. Do not reword.
+> **Every filled brief MUST contain the Strict Scope block verbatim.** Filled briefs are written to `.skill-forge/briefs/stream-N.md` and Phase 5 greps that file for the literal phrase `STRICT SCOPE — OUTPUT IS FILE-WRITE ONLY.` before spawning; spawn aborts if missing (see phase-5-research.md §Mandatory scope clause). Do not reword.
 
 ````
 You are researching <TOPIC> to add verified rules to a <SKILL-TARGET> skill.
@@ -43,6 +43,14 @@ Your deliverable is exactly one markdown file at the output path specified below
 - Trigger any remote write (CI, webhooks, deployments).
 - Modify any file outside the specified output path.
 - Call any other Agent / sub-agent — no recursive spawning.
+
+SECRETS — DO NOT READ. Never read these files (they contain API tokens that
+would leak into your context and output): `~/.claude/settings.json`,
+`~/.claude.json`, and any file the project's CLAUDE.md marks as
+secret-bearing. If your research needs a structural fact from them (hook
+names, MCP server names), it is already in the Phase 1 profile you were
+given — use that. If it isn't there, record the need under Escalations;
+do not open the files.
 
 If during research you believe a git/gh action would be useful (e.g. "this project should have a PR opened for X"), STOP and record the recommendation in your research doc under a heading `## Escalations — supervisor decides`. The supervisor will decide whether to execute; you do not.
 
@@ -120,7 +128,7 @@ Ready-to-paste rules in this format:
 ```
 
 ## Scope
-Target <5-10> verified gems, <3-8> proposed rules. Better to have 5 solid rules than 15 speculative ones. Maximum <600-700> lines total.
+Target <5-10> verified gems, <3-8> proposed rules. Better to have 5 solid rules than 15 speculative ones. **Maximum 700 lines total** — your output is machine-checked by `validate-research.sh` (headings, ≥3 gems, ≥3 distinct source domains, UNVERIFIED ratio, the 700-line cap); a doc that fails is rejected automatically.
 
 ## Tools
 
@@ -147,4 +155,4 @@ See the `example-research/` directory in the skill-forge repo (https://github.co
 
 ## Known issues
 
-**Plugin-install AskUserQuestion bug.** A Claude Code bug (GitHub Issue #29547) can cause `AskUserQuestion` to silently return empty answers when skill-forge is installed as a *plugin* rather than a regular user-space skill at `~/.claude/skills/<name>/` — the permission evaluator bypasses the user-interaction check and Claude hallucinates selections. If you're running skill-forge as a plugin, test consent gates before relying on them, or use the standard user-space install. Verify status against the upstream issue before assuming it still applies.
+**Plugin-install AskUserQuestion bug.** A Claude Code bug (GitHub Issue #29547) can cause `AskUserQuestion` to silently return empty answers when skill-forge is installed as a *plugin* rather than a regular user-space skill at `~/.claude/skills/<name>/` — the permission evaluator bypasses the user-interaction check and Claude hallucinates selections. If you're running skill-forge as a plugin, test consent gates before relying on them, or use the standard user-space install. Verify status against the upstream issue before assuming it still applies. **The pipeline-level defense is SKILL.md's empty-answer = STOP rule:** any gate returning empty/missing answers is treated as a stop, never as inferred consent — regardless of what caused it.

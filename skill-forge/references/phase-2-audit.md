@@ -10,16 +10,33 @@
 
 The audit scope must be **deterministic** — not a human-curated subset of "skills I think are relevant." Curation misses things. A 2026-04-19 cross-model run demonstrated this: curating 17 skills missed a real defect (`gh-cli` description 4 chars over budget) that a 20-skill scope caught. The fix is process, not model-count.
 
-**Deterministic scope rule:** audit every user-owned skill in `~/.claude/skills/` whose filePattern matches at least one file in the target project, OR whose bashPattern appears in project scripts, OR that is explicitly listed in `profile.json` under `relevant_skills`. No manual "this probably isn't relevant, skip it." If in doubt, include.
+**Deterministic scope rule:** audit every user-owned skill in `~/.claude/skills/` whose filePattern matches at least one file in the target project, OR whose bashPattern appears in project scripts, OR that is explicitly listed in `profile.json` under `relevant_skills`, **PLUS every project-local skill from `profile.json`'s `project_local_skills`** (project-local skills are the most stack-specific and get priority). No manual "this probably isn't relevant, skip it." If in doubt, include.
 
-**Exclude only** upstream skills the user cannot edit (per `ownership split` — writing-skills, skill-creator, plugin-dev:*, etc.). These appear in FYI-only reports and never in edit proposals, but audits of them are informational.
+**Exclude only** upstream skills the user cannot edit. *Ownership split* = the boundary between skills the user authored/owns (editable by this pipeline) and skills installed from upstream sources they don't maintain (writing-skills, skill-creator, plugin-dev:*, vendor plugins). Upstream skills appear in FYI-only reports and never in edit proposals, but audits of them are informational.
 
-Produce the scope list to `.skill-forge/audit-scope.txt` before invoking audit.sh so subsequent runs can diff scope changes.
+**Write the scope list to `.skill-forge/audit-scope.txt`** — format: one absolute skill-directory path per line (the directory containing SKILL.md), `#` lines are comments, no trailing whitespace. Subsequent runs diff this file to spot scope changes:
+
+```bash
+# if a prior run's scope exists, show what changed before overwriting
+[ -f .skill-forge/audit-scope.txt ] && cp .skill-forge/audit-scope.txt .skill-forge/audit-scope.prev.txt
+# ... write the new audit-scope.txt ...
+[ -f .skill-forge/audit-scope.prev.txt ] && diff .skill-forge/audit-scope.prev.txt .skill-forge/audit-scope.txt || true
+```
 
 ### 2.1 Run the audit script
 
+Resolve the script path first — user-level install is the default, but INSTALL.md documents project-local installs too:
+
 ```bash
-bash ~/.claude/skills/skill-forge/scripts/audit.sh $(cat .skill-forge/audit-scope.txt | tr '\n' ' ')
+AUDIT=~/.claude/skills/skill-forge/scripts/audit.sh
+[ -f "$AUDIT" ] || AUDIT=<project>/.claude/skills/skill-forge/scripts/audit.sh
+```
+
+Run it twice — text for the human-readable log, JSON for verdict derivation:
+
+```bash
+bash "$AUDIT" $(grep -v '^#' .skill-forge/audit-scope.txt | tr '\n' ' ')
+bash "$AUDIT" --format json $(grep -v '^#' .skill-forge/audit-scope.txt | tr '\n' ' ') > .skill-forge/audit-findings.json
 ```
 
 The script emits a structured report covering:
@@ -32,6 +49,20 @@ The script emits a structured report covering:
 - References/ subdirectory existence + file count
 - Orphan references (references/*.md not mentioned in main SKILL.md)
 - Broken cross-references (main mentions `references/X.md` but file doesn't exist)
+
+### 2.1b Fold in empirical telemetry (if the profile has it)
+
+If `profile.json`'s `usage_telemetry` is non-null, extract per-skill facts — these are pre-computed verdicts from a stronger scan; transcribe them, don't re-judge:
+
+```bash
+jq -r --arg s "<skill-name>" '.by_skill[$s] | {criteria_failures, fire_count_estimate, invocation_count_estimate}' <telemetry-path>
+```
+
+- `criteria_failures` map to verdicts via the fixed lookup in §2.5 (e.g. `frontmatter_valid` → Defect: YAML; `trigger_specificity` → Defect: trigger; `description_*` → Defect: description).
+- **Over-matching descriptions:** `fire_count_estimate ≥ 20` with `invocation_count_estimate == 0` = the description over-matches the catalog without producing use → Defect: description. (This replaces any vague "triggers false-positives per memory/logs" judgment — the numbers are the evidence.)
+- **Never-used skills:** `fire_count_estimate ≥ 10` AND `invocation_count_estimate == 0` AND skill unmodified > 60 days → verdict **Candidate: archive (unused)** (§2.5).
+
+No telemetry → skip this step; the audit still works, it just relies on the script + judgment alone.
 
 ### 2.2 Check for stale content
 
@@ -53,26 +84,41 @@ High overlap without explicit pairing = candidate for consolidation. Explicit pa
 
 ### 2.4 Description quality review
 
-For each skill:
-- Is the description specific enough to prevent false-positive triggering? (`Python stuff` = bad. `PySide6 desktop app rules, QSS gotchas, PyInstaller packaging` = good)
-- Does it state when to USE vs when NOT to use?
-- ≤300 chars?
+Most of this is now scripted — audit.sh checks length (FM003), when-NOT-to-use presence (FM004), third-person voice (FM005), always-invoke language (FM006), and destructive-keywords-without-disable-model-invocation (FM007). Read those findings from the JSON; do not re-derive them.
+
+The two judgment calls that remain for the model:
+- Is the description **specific** enough to prevent false-positive triggering? (`Python stuff` = bad. `PySide6 desktop app rules, QSS gotchas, PyInstaller packaging` = good)
+- Is the description **accurate** — does it match what the skill's body actually covers?
 
 ### 2.5 Classify every skill with a Verdict
 
 For each in-scope skill, assign exactly one verdict. This drives Phase 4/6 candidate lists — **only "Defect" verdicts become proposed changes**. "Fits — leave alone" skills are explicitly excluded from the approval gate so the list stays honest and short.
 
+**Derive verdicts from `.skill-forge/audit-findings.json` via this fixed mapping first** — model judgment covers only what the script can't check (stale content, description vagueness/accuracy, intentionality of overlap):
+
+| JSON `rule_id` | → Verdict |
+|---|---|
+| FM001, FM002 | Defect: YAML |
+| FM003, FM004, FM005, FM006 | Defect: description |
+| TR001, TR002 | Defect: trigger |
+| TR003 (cross-skill) | Defect: overlap — unless an explicit "Pairs with" cross-ref makes it intentional (judgment) |
+| RI001, RI002 | Defect: broken refs |
+| SS001 | Borderline: size |
+| SS002-SS007, RI003, TR004, FM007 | note in report; not verdict-changing on their own |
+| no findings for the skill | ✓ Fits — leave alone (unless §2.2 stale-content or §2.1b telemetry says otherwise) |
+
 | Verdict | Criteria |
 |---|---|
-| **✓ Fits — leave alone** | YAML valid, description ≤300 chars and specific, triggers correctly scoped, under token budget, no stale content, no unintentional overlap. **No change is a success — do not rewrite.** |
+| **✓ Fits — leave alone** | No verdict-mapped findings, description specific+accurate, no stale content, no unintentional overlap. **No change is a success — do not rewrite.** |
 | **Defect: YAML** | Frontmatter fails to parse, or missing required field |
-| **Defect: description** | >300 chars, vague (`Python stuff`), or triggers false-positives per memory/logs |
+| **Defect: description** | >300 chars, vague (`Python stuff`), missing when-NOT-to-use clause, wrong person/voice, always-invoke language, or telemetry shows over-matching (fire ≥20, invocations 0 — §2.1b) |
 | **Defect: trigger** | Overly-broad filePattern (`**/*.py`) or bashPattern (`python`, `git`) |
 | **Defect: stale** | Year marker older than 12 months, version claim behind current stable, deprecated API |
 | **Defect: overlap** | Unintentional filePattern overlap with another skill + no "Pairs with" cross-ref |
 | **Defect: broken refs** | Main mentions `references/X.md` that doesn't exist, or dead external URL |
-| **Borderline: size** | >2,000 tokens; candidate for Phase 7 refactor only if rules cleanly cluster |
+| **Borderline: size** | Main SKILL.md > 500 lines (SS001 — the one split metric); candidate for Phase 7 refactor only if rules cleanly cluster |
 | **Borderline: content gap** | Research in Phase 5 may surface additions; revisit in Phase 6 |
+| **Candidate: archive (unused)** | Telemetry-only verdict (§2.1b): fired ≥10× in the catalog, invoked 0 times, unmodified > 60 days. Proposes a consent-gated move to `~/.claude/skills-archive/<name>/` at the Phase 3→4 gate (restore = move it back). Never fires without telemetry. |
 
 **"Fits — leave alone" is the default.** If in doubt, mark it Fits. Agents have a strong bias toward finding things to change; counter it explicitly. A rewording that's "slightly shorter" or "slightly clearer" is NOT a defect.
 
@@ -86,12 +132,12 @@ Write to `<project>/.skill-forge/audit-report.md`:
 # Skill Audit Report — <project> — <date>
 
 ## Size audit + verdict
-| Skill | Main tokens | Refs | YAML | Trigger | Stale | Overlap | **Verdict** |
+| Skill | Main lines | Refs | YAML | Trigger | Stale | Overlap | **Verdict** |
 |---|---|---|---|---|---|---|---|
-| pyside6-desktop | 1,698 | 7 | ✓ | ✓ | ✓ | none | **✓ Fits — leave alone** |
-| network-device-discovery | 8,631 | 0 | ✓ | ✓ | ✓ | none | **Borderline: size** |
-| python-packaging | 1,320 | 0 | ✓ | ✓ | ✓ | none | **✓ Fits — leave alone** |
-| ios-capacitor-build | 2,821 | 2 | **ERROR (E1)** | ✓ | ✓ | none | **Defect: YAML** |
+| pyside6-desktop | 168 | 7 | ✓ | ✓ | ✓ | none | **✓ Fits — leave alone** |
+| network-device-discovery | 936 | 0 | ✓ | ✓ | ✓ | none | **Borderline: size** |
+| python-packaging | 132 | 0 | ✓ | ✓ | ✓ | none | **✓ Fits — leave alone** |
+| ios-capacitor-build | 287 | 2 | **ERROR (FM001)** | ✓ | ✓ | none | **Defect: YAML** |
 
 **Healthy-library check:** if every row is "✓ Fits — leave alone", the library needs no changes. Report that to the user and offer early exit at the Phase 3→4 gate.
 
@@ -102,10 +148,11 @@ Write to `<project>/.skill-forge/audit-report.md`:
 - `**/*.py` matches Python files anywhere in the tree (recursive).
 - Patterns with `/` anchor to specific paths.
 
-Audit flags:
+Audit flags (rule IDs match `audit.sh` exactly — the script is canonical):
 - **TR001 — recursive-wildcard overreach:** `**/*.py`, `**/*.js`, `**/*.ts`, `**/*.md` — matches entire project. Rarely appropriate; replace with directory-convention patterns (`**/widgets/*.py`) or named-file patterns (`**/pyproject.toml`).
 - **TR002 — bashPattern too common:** `python`, `pip`, `npm`, `git` — fires on every shell session. Narrow to specific subcommands.
-- **TR003 — empty filePattern + empty bashPattern:** command-invoked-only skill (like skill-forge itself). This is **intentional** for slash-command skills; not a defect.
+- **TR003 — cross-skill filePattern overlap:** two skills declare the identical pattern; Defect: overlap unless explicitly paired.
+- **TR004 — no triggers declared:** empty filePattern + empty bashPattern = command-invoked-only skill (like skill-forge itself). This is **intentional** for slash-command skills; not a defect — confirm the choice, don't "fix" it.
 
 Do **not** flag `*.py` as too-broad by default — per gitignore semantics it's scoped to top-level. Only flag if the top-level layout means it still matches many files.
 
@@ -121,7 +168,7 @@ Do **not** flag `*.py` as too-broad by default — per gitignore semantics it's 
 
 ## Checkpoint — call `AskUserQuestion`
 
-Print the phase summary as text (5-10 lines — what was done, counts, notable findings). Keep it short. Then **call `AskUserQuestion`** (never a text prompt — users skim and miss them):
+Print the phase summary as text (5-10 lines — what was done, counts, notable findings). Keep it short. Then — **in interactive mode** — call `AskUserQuestion` as below (never a text prompt — users skim and miss them); in autopilot this is an auto-advance transition (SKILL.md mode table), so print the summary and continue to Phase 3:
 
 ```
 Question: "Audit done — next step?"

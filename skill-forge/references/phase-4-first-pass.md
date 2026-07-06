@@ -10,20 +10,37 @@ This phase only executes changes the user already approved. The plain-English ch
 
 If the user chose **Cancel** at the gate, Phase 4 is a no-op: skip straight to the Phase 4→5 cost gate. The backup tarball is still NOT created (nothing to back up).
 
-## Rule of thumb for this phase
+## Rule of thumb (this is the gate-time filter, restated)
 
-If a change would require web research to justify, defer it to Phase 6. If you can verify the change with existing project files, project memory, or a single docs URL you already know is authoritative, it belonged in the Phase 3→4 gate. No new changes get invented in this phase — only approved ones execute.
+This rule was already applied when the Phase 3→4 change blocks were assembled; it is restated here so mid-phase temptations get the same answer: if a change would require web research to justify, it belongs in Phase 6. If it can be verified with existing project files, project memory, or a single already-known authoritative docs URL, it belonged in the Phase 3→4 gate. No new changes get invented in this phase — only approved ones execute.
 
 ## Before executing approved edits
+
+The Phase 3→4 gate approval created `.skill-forge/consent-phase4.ok` (the write-gate hook checks it). Verify it exists; if it doesn't, you skipped the gate — go back.
 
 Snapshot the user's skills directory (only if the approved set is non-empty):
 
 ```bash
-cd ~/.claude/skills
-tar czf <target-project>/.skill-forge/backup-$(date +%Y%m%d-%H%M%S).tar.gz .
+[ -d ~/.claude/skills ] || { echo "ABORT: ~/.claude/skills does not exist — nothing to back up or edit; re-check the Phase 1 profile"; exit 1; }
+BK=<target-project>/.skill-forge/backup-$(date +%Y%m%d-%H%M%S).tar.gz
+tar czf "$BK" -C ~/.claude/skills . || { echo "ABORT: backup failed"; exit 1; }
+```
+
+**Verify the backup before any edit (mandatory — an unverified backup is not a backup):**
+
+```bash
+test -s "$BK" && tar tzf "$BK" | grep -q 'SKILL.md' || { echo "ABORT: backup empty or unreadable — do not edit anything"; exit 1; }
+```
+
+**Restore procedure** (verbatim — for the failure menu's "rollback" option; never improvise a different one):
+
+```bash
+cd ~/.claude/skills && tar xzf <target-project>/.skill-forge/backup-<timestamp>.tar.gz
 ```
 
 The backup is defence-in-depth. The primary safety rail is that the user already saw and approved every change.
+
+**When Phase 4 ends** (all approved edits executed and logged): `rm -f .skill-forge/consent-phase4.ok`.
 
 ## Typical first-pass edits
 
@@ -46,6 +63,25 @@ The backup is defence-in-depth. The primary safety rail is that the user already
 ### 4.5 Known corrections
 - If project memory contains a `gotcha_*.md` that contradicts a skill, update the skill to reflect the project learning (with source cited as the memory file)
 - If a skill claims behavior for a framework version and the project is on a newer version, flag for Phase 6 (don't guess)
+
+### 4.6 Approved candidate installs
+Execute any Phase 3 "Install directly" dispositions the user approved at the gate:
+
+```bash
+npx skills add <owner>/<repo> --skill <skill-name> -y
+```
+
+(Project-local by default; the `<pkg>@<skill>` addressing form is only valid for `npx skills use`, not `add`.) If the install command fails, record the failure in the change log and move on — do not retry more than once.
+
+### 4.7 Approved archive moves
+Execute any "Candidate: archive (unused)" verdicts the user approved at the gate:
+
+```bash
+mkdir -p ~/.claude/skills-archive
+mv ~/.claude/skills/<name> ~/.claude/skills-archive/<name>
+```
+
+Restore is the reverse `mv` — put that one-liner in the change log entry so it travels with the decision.
 
 ## What NOT to do in this phase
 

@@ -1,6 +1,7 @@
 ---
 name: skill-forge
-description: Disciplined 9-phase workflow for auditing and improving a project's skill library — discover, audit, candidates, edits, research, structure, QA, memory. Invoked by /skill-forge or when user asks to improve/audit/tune skills.
+version: 0.3.0
+description: Disciplined 9-phase workflow to audit and improve a project's skill library — discover, audit, candidates, edits, research, structure, QA, memory. Invoked by /skill-forge or when asked to improve/audit/tune skills. Not for authoring one new skill (use skill-creator) or quick single-skill questions.
 filePattern: []
 bashPattern: []
 user-invocable: true
@@ -25,12 +26,12 @@ End-to-end workflow for improving a project's skill library. Entry point is the 
 ## Operating principles (never violate)
 
 1. **No fabrication.** Every rule added to a skill must cite a source (URL, git commit, existing project memory, reverse-engineered artifact). If a research agent returns an unverified claim, mark it `UNVERIFIED` and do not merge it inline.
-2. **Progressive disclosure default.** Any skill whose main SKILL.md exceeds ~2,000 tokens gets split into a brief main + `references/*.md`. See `references/phase-7-structure.md`.
+2. **Progressive disclosure default.** Any skill whose main SKILL.md exceeds **500 lines** (the metric `audit.sh` SS001 enforces) gets split into a brief main + `references/*.md`; the post-refactor main-body *target* is ~1,500-2,500 tokens. One metric everywhere — do not re-derive a token threshold. See `references/phase-7-structure.md`.
 3. **Never auto-install third-party skills.** Clone to a review directory (`skill-review/` under the target project), inspect, then copy only the verified gems into the user's active skills.
-4. **Cap parallelism at 3 concurrent agents.** The Anthropic compliance hook warns at 5 concurrent Claude processes; research batches are sized to stay under.
+4. **Cap parallelism at 3 concurrent agents.** Verified 2026 guidance puts the concurrency warning threshold around ~10 concurrent processes (see `docs/skill-research/03-subagent-orchestration.md`); 3 is a deliberate safety margin that also keeps research batches reviewable. Do not raise it without updating that research first.
 5. **Checkpoint after every phase.** Each phase ends with a one-screen summary and an explicit go/no-go. The user can stop the pipeline at any point without losing completed work.
 6. **Idempotent.** Re-running the command preserves previous research docs and audit reports. Edits are safe to re-run.
-7. **Target one project at a time.** "All my projects" is an anti-pattern — each project has different conventions. Run against cwd or an explicit `--project=` argument.
+7. **Target one project at a time.** "All my projects" is an anti-pattern — each project has different conventions. Run against cwd or an explicit project path argument (`/skill-forge <path>`). This scopes the *invocation*; a monorepo profiled as one project is fine.
 8. **Bias toward no-change — but don't conflate "don't edit" with "don't research".** A skill that already passes audit, has accurate content, and fits its scope is a success — *not an edit target*. Do not rewrite descriptions that parse and trigger correctly just because shorter is possible. Do not split skills under budget. Do not add rules that merely duplicate existing ones with different wording. Default action on existing content = **acknowledge and leave alone**. Editing requires a named, concrete gain, not a possible one.
 
    **However: "Fits — leave alone" does NOT exclude a skill from Phase 5 research.** Research streams are driven by the project's tech stack and pain points, not by whether the existing skill looks broken. A healthy skill can still benefit from a newly verified gem that the wider world has learned since the skill was last touched. If Phase 5 surfaces a genuine verified rule that the skill doesn't cover, Phase 6 proposes the *addition* via the approval gate — existing wording untouched, new rule appended with source. User approves per-change.
@@ -39,7 +40,7 @@ End-to-end workflow for improving a project's skill library. Entry point is the 
 9. **Every proposed change carries a justification in plain English.** Before any write to `~/.claude/skills/`, the user sees a block per skill: *what changes / what you gain / what the risks are / where the evidence came from / how to revert*. The user approves via `AskUserQuestion` before any edit lands. Post-hoc summaries are not consent.
 10. **Sub-agents are output-only.** Research agents write files, nothing else. No `git`, no `gh`, no branches, no commits, no PRs. See `references/research-agent-brief.md` for the mandatory scope clause.
 11. **Single-model by default; dual-model only where evidence justifies.** Running two models on the same work (Phases 1-4, 7-9) is wasteful — models converge >95% of the time on those phases, and divergence is usually a process issue (scope, rubric, coverage) that's better fixed by a process change than by throwing a second model at it. Dual-model adds real value in **exactly two places**: (a) opt-in `--dual-research` Phase 5 with topic-partitioned streams (Opus = framework/security, Sonnet = deployment/platform), and (b) an automatic cheap Sonnet read-only **critique pass** after Phase 6 primary extraction to catch gaps like a missed gem in an otherwise-extracted research doc. Everything else is single-model. See `references/phase-5-research.md` and `references/phase-6-critique.md`.
-12. **Mandatory security stream for authenticated backends.** If Phase 1 profile contains `supabase` / `firebase` / `auth0` / `jwt` / `express-session` / `passport` / similar auth triggers, Phase 5 automatically adds a non-optional security-audit research stream (Opus model). This is not a model-choice preference — security findings are high-enough stakes that "no stream covered this" is a production risk worth a mandatory stream inclusion. Override via `--skip-security-stream` (warns loudly).
+12. **Mandatory security stream for authenticated backends.** If Phase 1 profile contains any auth trigger — the canonical trigger list lives in `references/phase-5-research.md §Mandatory security stream` (supabase, firebase, auth0, jwt, express-session, passport, clerk, lucia, next-auth, iron-session, cookie-session, …) — Phase 5 automatically adds a non-optional security-audit research stream (Opus-tier model, per the Model resolution table below). This is not a model-choice preference — security findings are high-enough stakes that "no stream covered this" is a production risk worth a mandatory stream inclusion. Override ONLY via `--skip-security-stream` (warns loudly); no other flag, including `--budget=low`, touches this stream.
 
 ## The 9 phases
 
@@ -95,19 +96,22 @@ Two modes, set by the invoking slash command:
 
 Fast where safe, but **writes to `~/.claude/skills/` are always consent-gated** — the user sees the full change set in plain English and approves via `AskUserQuestion` before any skill file is touched. Progress summaries between non-write phases print as text (no stop).
 
-**Autopilot has four mandatory `AskUserQuestion` stops:**
+**Autopilot has five mandatory `AskUserQuestion` stops:**
 
-1. **Phase 3 → 4 (first-pass approval gate)** — present every proposed Phase 4 edit and every install with its plain-English change block (see `references/phase-4-first-pass.md §4.0`). No edits land without approval.
+1. **Phase 3 → 4 (first-pass approval gate)** — present every proposed Phase 4 edit and every install with its plain-English change block (see `references/phase-4-first-pass.md §4.0`). No edits land without approval. On approval, create `.skill-forge/consent-phase4.ok`; delete it when Phase 4 ends.
 2. **Phase 4 → 5 (cost gate)** — spawning research agents spends real tokens. Always ask.
 3. **After Phase 5 (rogue-agent check)** — diff git/PR state from the pre-Phase-5 snapshot; if a sub-agent created branches, commits, or PRs during research, stop and let the user decide. See `references/phase-5-research.md §5.9`.
-4. **Phase 5 → 6 (second-pass approval gate)** — present every proposed Phase 6 edit and every new-skill creation with its plain-English change block (see `references/phase-6-second-pass.md §6.0`). No edits land without approval.
+4. **Phase 5 → 6 (second-pass approval gate)** — present every proposed Phase 6 edit and every new-skill creation with its plain-English change block (see `references/phase-6-second-pass.md §6.0`). No edits land without approval. On approval, create `.skill-forge/consent-phase6.ok`; delete it when Phase 6 ends.
+5. **Phase 6 → 7 (structure/QA write gate)** — Phases 7 and 8 also write to `~/.claude/skills/` (refactors, QA fixes). Present the planned refactor set and QA fix policy as a change block and get approval before either phase touches a file. If Phase 7/8 have nothing to write (no oversized skills, no fixable findings), skip the ask and say so. On approval, create `.skill-forge/consent-phase7.ok`; delete it when Phase 8 ends.
 
 **One terminal summary: Phase 9.** The star-ask dialog. Natural end.
 
 Auto-advances (no stop) between phases where nothing is being written to `~/.claude/skills/`:
-- Phase 1→2, 2→3, 6→7, 7→8, 8→9
+- Phase 1→2, 2→3, 7→8 (covered by the 6→7 consent), 8→9
 
-**Healthy-library early exit.** If Phase 2 audit produces a classification where every in-scope skill is verdict "Fits — leave alone" AND Phase 3 finds no install-worthy candidates, Phase 4 prints *"Library is healthy — no changes proposed"* and `AskUserQuestion` offers `[Exit to summary / Run Phase 5 research anyway / Stop]`. No edits, no tarball, straight to Phase 9.
+**Empty-answer = STOP (hard rule).** `AskUserQuestion` has a documented failure mode where it returns empty or missing answers (unattended timeout, harness bugs). If ANY gate returns an empty/missing answer: never infer a selection, never proceed to a write or spend phase. Re-ask once; if still empty, halt the pipeline preserving artifacts and tell the user how to resume (`--from-phase=N`).
+
+**Healthy-library early exit.** If Phase 2 audit produces a classification where every in-scope skill is verdict "Fits — leave alone" AND Phase 3 finds no install-worthy candidates AND Phase 3 produced no pending "extract gems" dispositions (those are executed in Phase 6 — exiting early would strand them), Phase 4 prints *"Library is healthy — no changes proposed"* and `AskUserQuestion` offers `[Exit to summary / Run Phase 5 research anyway / Stop]`. No edits, no tarball, straight to Phase 9.
 
 The backup tarball still exists as a defence-in-depth safety rail. The **primary** safety rail is the consent gate.
 
@@ -128,10 +132,14 @@ Use interactive when: first-time user, reviewing a contributor's skills, running
 | **4→5 (cost gate)** | **ASK** | **ASK** |
 | **After Phase 5 (rogue-agent check)** | **ASK if anomalies detected** | **ASK if anomalies detected** |
 | **5→6 (second-pass approval gate)** | **ASK — show every change in plain English** | **ASK** |
-| 6→7 | auto-advance | ask |
-| 7→8 | auto-advance | ask |
+| **6→7 (structure/QA write gate)** | **ASK if Phase 7/8 will write anything** | **ASK** |
+| 7→8 | auto-advance (covered by 6→7 consent) | ask |
 | 8→9 | auto-advance | ask |
 | 9 (star-ask) | ask | ask |
+
+**Note on the per-phase "Checkpoint — call AskUserQuestion" blocks:** every phase reference file ends with one. In **interactive** mode they are executed verbatim after that phase. In **autopilot** they are executed only at the gate transitions marked ASK above; at auto-advance transitions, print the summary text and continue.
+
+**AskUserQuestion schema limits (verified 2026, see `docs/skill-research/02-askuserquestion-ux.md`):** 1-4 questions per call; 2-4 options per question; **Header ≤ 12 characters**; option labels 1-5 words. Oversized headers silently degrade the dialog — copy the limits, not vibes.
 
 **Design principle:** writes to `~/.claude/skills/` are user territory and require explicit, informed consent. The backup tarball is defence-in-depth, not the primary rail. Research-token spend stays consent-gated because it's the only irreversible cost. Rogue-agent check catches sub-agents that stepped outside their output-only scope before the next phase compounds the blast radius.
 
@@ -156,8 +164,11 @@ The user can also invoke `--phase=audit` or `--from-phase=5` to start mid-pipeli
 ├── profile.json                     ← Phase 1 output
 ├── audit-report.md                  ← Phase 2 output
 ├── backup-<timestamp>.tar.gz        ← pre-edit snapshot of ~/.claude/skills/
+├── consent-phase{4,6,7}.ok          ← gate-approval markers (created on approval, deleted at phase end)
 └── last-run.log
 ```
+
+"Gitignored" is not automatic: Phase 1 ensures `.skill-forge/` is in the target project's `.gitignore` when it first writes there (the backup tarball must never be committed).
 
 ## Cost expectations
 
@@ -172,12 +183,24 @@ Total pipeline run on a ~5-skill project: ~$3-8 in agent-time tokens. Skip Phase
 
 - **Active development in progress** — this will edit `~/.claude/skills/`. Commit your work first.
 - **Recent identical run** — if `docs/skill-research/` has docs from the last 7 days and nothing changed, skip Phase 5 (`--skip-research`).
-- **No skills relevant to the current project** — the command will detect this and suggest running with `--create-from-scratch` to bootstrap skills instead.
+- **No skills relevant to the current project** — the command will detect this, report it, and suggest bootstrapping new skills with the `skill-creator` skill instead (skill-forge maintains libraries; it does not create them from nothing).
+
+## Model resolution (when a named tier is unavailable)
+
+Phase files name model tiers ("Opus" for security research, "Sonnet" for critique). Tier names mean **capability slots, not hard requirements**:
+
+| Named tier | Resolution order |
+|---|---|
+| Opus | strongest available Claude model → sonnet → the supervisor's own model |
+| Sonnet | sonnet → any cheaper available tier → the supervisor's own model |
+
+When substituting, record the substitution in `.skill-forge/run-log.md` and in the affected research doc's header so provenance survives. `--dual-research` degrades to single-model when only one tier exists — say so at the cost gate instead of failing.
 
 ## Reading order for Claude
 
 When invoked via `/skill-forge`, read phases on demand, one at a time, in order. Do NOT preload all 9 reference files — that defeats progressive disclosure. The flow:
 
+0. **Staleness check (10 seconds):** if the skill-forge git repo is present on this machine, run `bash <repo>/install.sh --check`; alternatively run `bash ~/.claude/skills/skill-forge/scripts/audit.sh --self`. If the installed copy is stale or incomplete, tell the user and offer to re-install before running a pipeline on old logic. (`version:` in this file's frontmatter + `.install-manifest` identify what's running.)
 1. Read this SKILL.md (already in context)
 2. Read `references/phase-1-discover.md` and execute Phase 1
 3. Present summary, wait for go

@@ -13,14 +13,14 @@ How the pieces fit together, for contributors and curious users.
 
 ### 2. `skill-forge` skill (`skill-forge/`)
 - The methodology
-- Dogfoods progressive disclosure (brief main SKILL.md + 10 reference files)
+- Dogfoods progressive disclosure (brief main SKILL.md + 11 reference files)
 - Referenced by the slash command AND auto-loaded if Claude decides it's relevant
 
 ## Phase reference files
 
 The main `SKILL.md` contains the high-level phase table. Each phase's detailed steps live in `skill-forge/references/phase-N-<name>.md`.
 
-**Why split?** Loading all 9 phases at once into context would be ~10k tokens of instructions Claude has to hold. Loading them one at a time as execution progresses keeps the active context focused on *the current step*.
+**Why split?** Loading all 9 phases at once into context would be ~25k tokens of instructions Claude has to hold. Loading them one at a time as execution progresses keeps the active context focused on *the current step*.
 
 Claude reads a phase's reference file immediately before executing that phase, executes the phase, prints the checkpoint, then (on user consent) reads the next phase's reference.
 
@@ -36,13 +36,13 @@ Loads skill-forge/SKILL.md (phase table + principles)
   ↓
 Phase 1: Read references/phase-1-discover.md
          Execute → write <project>/.skill-forge/profile.json
-         Print checkpoint → wait for user
+         Print summary → auto-advance (autopilot) / dialog (--interactive)
   ↓
 Phase 2: Read references/phase-2-audit.md
          Run scripts/audit.sh → write <project>/.skill-forge/audit-report.md
-         Print checkpoint → wait for user
+         Print summary → auto-advance (autopilot) / dialog (--interactive)
   ↓
-  ... (phases 3-8)
+  ... (phases 3-8; consent gates at 3→4, 4→5, post-5, 5→6, 6→7)
   ↓
 Phase 5 (expensive): Use references/research-agent-brief.md as template
          Spawn 3-agent batches of search-specialist agents
@@ -55,7 +55,7 @@ Phase 9: Read references/phase-9-memory.md
 
 ## Per-project artifacts (not in this repo)
 
-Everything `skill-forge` produces lands in the *target project*, not this repo:
+Everything `skill-forge` produces lands in the *target project*, not this repo (this repo carries its own `docs/skill-research/` from dogfooding runs — the exception that proves the rule):
 
 ```
 <target-project>/
@@ -83,13 +83,15 @@ The intent: research docs are persistent (they're source-of-truth citations); wo
 - YAML frontmatter parses (required: `name`, `description`)
 - `name` matches directory
 - Description ≤ 300 chars
-- Main SKILL.md ≤ 2,500 tokens (warning threshold)
+- Description quality: when-NOT-to-use present (FM004), third person (FM005), no always-invoke language (FM006), destructive keywords require `disable-model-invocation` (FM007)
+- Main SKILL.md over 500 lines → split (SS001)
+- Long reference files without a TOC (SS007); nested references (RI003)
 - Rule number duplicates (understanding progressive disclosure — inline + reference is OK; same rule in two reference files is NOT)
 - References mentioned in main actually exist
 - references/*.md files are all mentioned in main (no orphans)
 - Cross-skill filePattern overlap matrix
 
-Designed to be called directly or from `/skill-forge --phase=audit`. Zero dependencies beyond `python3 + pyyaml`.
+Designed to be called directly or from `/skill-forge --phase=audit`. Supports `--format json` for machine-readable output and `--self` for an install self-check. Zero dependencies beyond `python3 + pyyaml`.
 
 ## Safety rails (hardcoded)
 
@@ -102,6 +104,8 @@ These aren't configurable — they're commitments:
 | QA always runs | Slash command step 4 |
 | Consent before Phase 5 | Phase 5 reference file |
 | Backup before Phase 4 edits | Phase 4 reference file |
+| Write gate hook blocks un-consented `~/.claude/skills/` writes | `hooks/skill-write-gate.sh` (opt-in registration) |
+| Phase 7/8 writes consent-gated | SKILL.md gate #5; phase-7/phase-8 reference files |
 
 Changing any of these requires a design-rationale PR, not a drive-by.
 

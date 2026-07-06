@@ -33,7 +33,7 @@ If any component shows MISSING, **call `AskUserQuestion`** before proceeding to 
 
 ```
 Question: "Research has gaps — spawn catch-up streams?"
-Header:   "Coverage gaps"
+Header:   "Coverage"
 Options:
   - Label: `Spawn catch-up streams`
     Description: Adds <N> research streams (~$<cost>) to cover missing components; extends Phase 5 before extraction
@@ -44,6 +44,8 @@ Options:
 ```
 
 This is not Audit Army. It's a transparent free check (no agents spawned) that surfaces what Phase 5 planning may have missed, and lets the user decide whether to spend catch-up-stream cost or accept the gap. Most runs will have zero gaps; when gaps exist, the user makes an informed decision.
+
+If catch-up streams are spawned, take the git snapshot before spawning and run the §5.9 rogue-agent check after they complete — same protocol as Phase 5 (see `phase-5-research.md` §5.9).
 
 ### 6.0 Phase 5 → 6 second-pass approval gate (MANDATORY in autopilot)
 
@@ -56,7 +58,8 @@ This is the **second write-consent gate**. Runs BEFORE any edit to `~/.claude/sk
    - Each proposed rule must name a **concrete observable gain** — "closes a verified knowledge gap flagged in research doc 0N", "prevents silent failure X", "codifies behaviour change in library Y v2.0"
    - Drop proposals that amount to rewording existing content with no new information
    - Keep UNVERIFIED flags as rejected (already a Phase 6 rule) — never silently drop
-3. Print the plain-English change blocks (same format as Phase 3→4, see `phase-3-find-candidates.md §Step B`), one per proposed change. For new-skill proposals, print an extra block:
+3. Run the §6.6b Sonnet critique pass on the proposed change set (research docs + proposed change blocks — nothing applied yet); fold verified critique gaps into the proposal list, tagged `[Model-specific: Sonnet critique]`.
+4. Print the plain-English change blocks (same format as Phase 3→4, see `phase-3-find-candidates.md §Step B`), one per proposed change. For new-skill proposals, print an extra block:
    ```
    New skill: <name>
    Scope:     <one-line summary>
@@ -64,11 +67,11 @@ This is the **second write-consent gate**. Runs BEFORE any edit to `~/.claude/sk
    Trigger:   <filePattern / bashPattern list>
    Pairs with: <existing skills this cross-refs>
    ```
-4. Present the approval dialog:
+5. Present the approval dialog:
 
 ```
 Question: "<N> changes + <K> new skills proposed — approve?"
-Header:   "Phase 5 → 6 approval"
+Header:   "5→6 approval"
 Options:
   - Label: `Approve all`
     Description: Apply every change and create every new skill
@@ -156,15 +159,15 @@ Don't silently drop proposed rules. Log every rejection in `<project>/.skill-for
 
 ### 6.6b Sonnet critique pass (automatic, cheap)
 
-After §6.1-§6.6 complete (primary extraction done, logged to `second-pass-changes.md`), but BEFORE §6.0 presents the approval gate, automatically spawn a single **Sonnet read-only critique sub-agent** to find extraction gaps.
+After §6.1-§6.2 assemble the proposed change set (analysis only — nothing applied yet), and BEFORE the §6.0 gate presents it, automatically spawn a single **Sonnet read-only critique sub-agent** to find extraction gaps. The critique runs on the PROPOSED change set, not on completed edits — its findings fold into what the gate shows the user, so gaps are caught before anything is written.
 
 See `references/phase-6-critique.md` for the full brief template, output format, supervisor-handles-results protocol, and skip-flag behavior.
 
 Summary of flow:
-1. Supervisor (Opus or user's chosen model) finishes primary extraction
-2. Supervisor spawns one Sonnet sub-agent: `subagent_type: general-purpose, model: sonnet, run_in_background: true`
-3. Sub-agent reads Phase 5 research docs + extraction log, writes gap report to `.skill-forge/phase-6-critique.md`
-4. Supervisor reads the critique gap list, folds gaps into the approval gate's proposal list with `[Model-specific: Sonnet critique]` tags
+1. Supervisor (Opus or user's chosen model) finishes assembling the proposed change set (§6.1-§6.2 + justification bar) and writes the change blocks to `.skill-forge/second-pass-proposals.md`
+2. Supervisor takes the git snapshot, then spawns one Sonnet sub-agent: `subagent_type: general-purpose, model: sonnet, run_in_background: true` — and runs the §5.9 rogue-agent check after it completes, same as Phase 5 (see `phase-5-research.md` §5.9)
+3. Sub-agent reads Phase 5 research docs + the proposed (not-yet-applied) change blocks, writes gap report to `.skill-forge/phase-6-critique.md`
+4. Supervisor verifies the critique output (see "Supervisor verification" in `phase-6-critique.md`), then folds surviving gaps into the approval gate's proposal list with `[Model-specific: Sonnet critique]` tags
 5. Gate presents the combined set; user approves per-change as usual
 
 Cost: ~$0.30-0.50 per run. Skipped automatically under `--budget=low` or explicitly via `--skip-critique`.
@@ -217,6 +220,8 @@ Write to `<project>/.skill-forge/second-pass-changes.md`:
 
 ## Checkpoint — call `AskUserQuestion`
 
+Mode note: this checkpoint is the mandatory 6→7 structure/QA write gate — autopilot stops here too, not just `--interactive`. Approval records consent for Phase 7/8 writes (`.skill-forge/consent-phase7.ok`).
+
 Print the phase summary as text (5-10 lines — what was done, counts, notable findings). Keep it short. Then **call `AskUserQuestion`** (never a text prompt — users skim and miss them):
 
 ```
@@ -239,7 +244,7 @@ Option labels are short on purpose — users shouldn't have to read a paragraph 
 
 Print this detailed explanation to the user, then **re-call `AskUserQuestion` with the same options** (the user will pick one of the non-Explain-more options the second time):
 
-> Phase 7 applies progressive-disclosure refactoring to any skill with a main SKILL.md > 2k tokens — splits into brief main + references/*.md. Also tightens overly-broad filePatterns (no `**/*.py` etc) and resolves any unintentional cross-skill overlap. Takes 2-5 minutes.
+> Phase 7 applies progressive-disclosure refactoring to any skill with a main SKILL.md > 500 lines — splits into brief main + references/*.md. Also tightens overly-broad filePatterns (no `**/*.py` etc) and resolves any unintentional cross-skill overlap. Takes 2-5 minutes.
 
 Never loop more than twice — if they pick "Explain more" again, default to "Stop" and ask them what they'd actually like to do.
 
