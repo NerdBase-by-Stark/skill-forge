@@ -94,7 +94,7 @@ fi
 if [[ "$MODE" == "uninstall" ]]; then
     [[ -d "$INSTALL_DIR_SKILL" ]] && rm -rf "$INSTALL_DIR_SKILL" && info "Removed $INSTALL_DIR_SKILL"
     [[ -f "$INSTALL_CMD" ]] && rm -f "$INSTALL_CMD" && info "Removed $INSTALL_CMD"
-    backups=$(ls -d "$INSTALL_DIR_SKILL".bak-* "$INSTALL_CMD".bak-* 2>/dev/null || true)
+    backups=$(ls -d "$CLAUDE_DIR/skill-forge-backups"/skill-forge.bak-* "$INSTALL_DIR_SKILL".bak-* "$INSTALL_CMD".bak-* 2>/dev/null || true)
     if [[ -n "$backups" ]]; then
         if [[ "$ASSUME_YES" -eq 1 ]]; then
             echo "$backups" | xargs rm -rf
@@ -119,7 +119,8 @@ info "Installing skill-forge ${VERSION:-<no version field>} from $SOURCE"
 
 # ---- Preserve existing install (if any) ----
 if [[ -d "$INSTALL_DIR_SKILL" ]]; then
-    BACKUP="$INSTALL_DIR_SKILL.bak-$(date +%Y%m%d-%H%M%S)"
+    BACKUP="$CLAUDE_DIR/skill-forge-backups/skill-forge.bak-$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$CLAUDE_DIR/skill-forge-backups"
     warn "Existing skill-forge found — backing up to $BACKUP"
     mv "$INSTALL_DIR_SKILL" "$BACKUP"
 fi
@@ -157,7 +158,7 @@ test -f "$INSTALL_CMD" || die "Install failed: slash command missing"
 test -f "$INSTALL_DIR_SKILL/.install-manifest" || die "Install failed: manifest missing"
 
 # ---- Prune old backups: keep only the most recent ----
-old_backups=$(ls -dt "$INSTALL_DIR_SKILL".bak-* 2>/dev/null | tail -n +2 || true)
+old_backups=$(ls -dt "$CLAUDE_DIR/skill-forge-backups"/skill-forge.bak-* "$INSTALL_DIR_SKILL".bak-* 2>/dev/null | tail -n +2 || true)
 if [[ -n "$old_backups" ]]; then
     echo "$old_backups" | xargs rm -rf
     info "Pruned older backups (kept most recent)"
